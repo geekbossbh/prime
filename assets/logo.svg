@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 500" role="img" aria-label="Lioness Prime">
+  <title>Lioness Prime</title>
+  <defs>
+    <linearGradient id="lpGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDF4D0"/><stop offset="18%" stop-color="#EBD285"/>
+      <stop offset="42%" stop-color="#C9A227"/><stop offset="62%" stop-color="#A07C1A"/>
+      <stop offset="82%" stop-color="#DCC068"/><stop offset="100%" stop-color="#F7EBBE"/>
+    </linearGradient>
+    <linearGradient id="lpSashG" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#9A7518"/><stop offset="45%" stop-color="#F2DE9C"/>
+      <stop offset="100%" stop-color="#C9A227"/>
+    </linearGradient>
+    <mask id="lpMask">
+      <rect width="512" height="500" fill="#fff"/>
+      <path d="M 170 386 C 226 360, 294 346, 344 314" stroke="#000" stroke-width="34" stroke-linecap="round" fill="none"/>
+    </mask>
+  </defs>
+  <g mask="url(#lpMask)" fill="url(#lpGold)">
+
+    <path d="M256 178 L296 178 L410 470 L328 470 Z"/>
+    <rect x="94"  y="458" width="118" height="24" rx="12"/>
+    <rect x="316" y="458" width="118" height="24" rx="12"/>
+    <path d="M 242.0 33.2 A 21.7 21.7 0 0 0 215.2 22.7 A 21.4 21.4 0 0 0 186.7 25.0 A 21.9 21.9 0 0 0 161.6 39.9 A 22.6 22.6 0 0 0 144.4 64.7 A 23.2 23.2 0 0 0 138.0 95.0 A 23.2 23.2 0 0 0 143.6 125.5 A 22.7 22.7 0 0 0 160.3 150.8 A 21.9 21.9 0 0 0 185.0 166.4 C 190 194, 172 208, 156 238 C 136 300, 120 390, 108 470 L 198 470 C 232 362, 258 254, 272 178 C 268 168, 260 160, 254 154 C 268 150, 278 140, 280 124 C 281 116, 275 112, 280 105 C 287 97, 295 93, 288 86 C 281 79, 280 72, 281 62 C 284 40, 268 26, 242.0 33.2 Z"/>
+  </g>
+  <path d="M 170 386 C 226 360, 294 346, 344 314" fill="none" stroke="url(#lpSashG)" stroke-width="20" stroke-linecap="round"/>
+</svg>
