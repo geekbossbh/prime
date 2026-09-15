@@ -11,6 +11,8 @@ assets/logo-320.png                     the same mark, web-sized (used on the pa
 assets/favicon.png                      browser tab icon
 assets/benefit-qr.jpg                   the Benefit Pay QR code
 wordpress/lioness-prime/                WordPress plugin: serves the page + mails invoices
+  lioness-prime.php                     thin loader — never changes between releases
+  core/lioness-core-X.Y.Z.php           all the logic; the version is in the filename
 dist/lioness-prime.zip                  the built plugin (run ./build-plugin.sh)
 ```
 
@@ -76,6 +78,26 @@ are untouched. To stop the plugin taking over the front page and keep only
 
 To update the page later: edit `index.html`, run `./build-plugin.sh`, and upload the
 new zip over the old plugin (WordPress asks you to confirm replacing it).
+
+## Why the plugin is split in two
+
+`lioness-prime.php` holds no logic beyond finding and loading the newest
+`core/lioness-core-*.php`.
+
+This is deliberate. A server that caches compiled PHP — this one runs Docket
+Cache over OPcache — can keep executing the code it compiled for a file path
+even after that file has been replaced, with nothing to show for it. That
+happened here: an upload landed, the page updated because HTML is not compiled,
+and every PHP change silently did nothing until the cache was flushed.
+
+A filename the server has never compiled cannot be stale. So each release ships
+its core under a new filename, and the loader — whose own contents never change,
+so a stale copy behaves identically — finds whichever is newest. Uploading a new
+version takes effect immediately, with no cache to flush.
+
+**When you change the plugin code**, rename the core file to the next version
+and bump `LIONESS_VERSION` inside it. `curl -I https://prime.aasaad.com/course`
+will show an `X-Lioness` header saying which version is really running.
 
 ## Emailing the invoice
 

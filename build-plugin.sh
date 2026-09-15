@@ -9,9 +9,9 @@ PLUGIN=lioness-prime
 rm -rf "$OUT/$PLUGIN" "$OUT/$PLUGIN.zip"
 mkdir -p "$OUT/$PLUGIN/page/assets"
 
-cp wordpress/$PLUGIN/$PLUGIN.php "$OUT/$PLUGIN/"
-cp index.html                    "$OUT/$PLUGIN/page/"
-cp assets/*                      "$OUT/$PLUGIN/page/assets/"
+cp -R wordpress/$PLUGIN/.         "$OUT/$PLUGIN/"
+cp index.html                     "$OUT/$PLUGIN/page/"
+cp assets/*                       "$OUT/$PLUGIN/page/assets/"
 
 ( cd "$OUT" && zip -qr "$PLUGIN.zip" "$PLUGIN" -x '.*' )
 rm -rf "$OUT/$PLUGIN"
