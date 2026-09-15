@@ -588,27 +588,23 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
                   <p>
                     Method: <b id="invMethod">—</b><br>
                     Reference: <b class="mono" id="invRef">—</b><br>
-                    <span id="invTxnWrap" hidden>Your transaction no.: <b class="mono" id="invTxn">—</b><br></span>
-                    Issued by: <b id="invMerchant">Lioness Prime</b>
+                    <span id="invTxnWrap" hidden>Transaction: <b class="mono" id="invTxn">—</b></span>
                   </p>
                 </div>
               </div>
 
               <table class="items">
-                <thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
+                <thead><tr><th>Description</th><th>Amount</th></tr></thead>
                 <tbody>
                   <tr>
                     <td><b id="invItem">Lioness Prime Course — Subscription</b>
                       <small id="invItemSub">A course in the skills of appreciating visual beauty.</small></td>
-                    <td>1</td>
                     <td id="invLineAmt">—</td>
                   </tr>
                 </tbody>
               </table>
 
               <div class="totals">
-                <div class="r"><span>Subtotal</span><span id="invSubtotal">—</span></div>
-                <div class="r"><span>Discount</span><span>—</span></div>
                 <div class="r grand"><span>Total</span><span id="invTotal">—</span></div>
               </div>
 
@@ -618,30 +614,17 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
               </div>
             </div>
             <div class="inv-foot">
-              This invoice confirms the purchase of the Lioness Prime Course subscription. Access is granted after the
-              payment is confirmed against reference <b class="mono" id="invRefFoot">—</b>, normally within 24 hours.
-              Digital course — no physical goods are shipped. Questions? <span id="invContactLine">Contact us any time.</span>
+              Access is opened once your payment is matched to reference <b class="mono" id="invRefFoot">—</b>,
+              normally within 24 hours. <span id="invContactLine"></span>
             </div>
           </div>
 
           <div class="inv-actions no-print">
-            <button type="button" class="btn btn-purple btn-sm" id="resendEmail" hidden>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
-              Email the invoice again
-            </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="sendInvoice">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg>
-              Send my details to Lioness Prime
-            </button>
             <button type="button" class="btn btn-ghost btn-sm" id="printInvoice">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
               Print / save as PDF
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="copyInvoice">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-              Copy invoice details
-            </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="startOver">Start a new enrollment</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="resendEmail" hidden>Email it again</button>
           </div>
         </div>
       </div>
@@ -1041,6 +1024,12 @@ function confirmView(method) {
   });
 }
 
+/* The reference has to be typed into a note field in another app, so put it on
+   the clipboard as soon as a payment method is opened. */
+function armReference() {
+  copy(state.ref, 'Reference copied — paste it in the payment note');
+}
+
 /* ---------- PayPal ---------- */
 function paypalModal() {
   openModal(`
@@ -1058,7 +1047,7 @@ function paypalModal() {
       <ol class="steps-ol">
         <li>Tap the gold button below — PayPal opens in a secure window.</li>
         <li>Pay with your card or PayPal balance.</li>
-        <li>Paste your reference <b class="mono">${state.ref}</b> into the note field if PayPal offers one.</li>
+        <li>Paste your reference <b class="mono">${state.ref}</b> into the note field — it is already copied.</li>
         <li>Come back here and confirm — your invoice appears instantly.</li>
       </ol>
       <div class="modal-foot">
@@ -1066,7 +1055,7 @@ function paypalModal() {
           Open secure PayPal window
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>
         </button>
-        <button class="btn btn-ghost btn-block" id="ppCopy">Copy my reference number</button>
+        <button class="btn btn-ghost btn-block" id="ppCopy">Copy the reference again</button>
         <button class="btn btn-purple btn-block" id="ppDone">I've completed the payment</button>
       </div>
       <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
@@ -1075,6 +1064,7 @@ function paypalModal() {
     </div>`);
 
   $('#ppGo').addEventListener('click', () => {
+    armReference();
     const w = 480, h = 760;
     const x = Math.max(0, (screen.width - w) / 2), y = Math.max(0, (screen.height - h) / 2);
     // note: 'noopener' must NOT go in the feature string — it forces a null return
@@ -1082,10 +1072,11 @@ function paypalModal() {
       `width=${w},height=${h},left=${x},top=${y},resizable,scrollbars`);
     if (win) { try { win.opener = null; } catch (e) {} }
     if (!win) toast('Allow pop-ups, or use the link at the bottom of this box.');
-    else toast('PayPal opened — come back here when you are done.');
+    else toast('Reference copied — paste it in the PayPal note');
   });
-  $('#ppCopy').addEventListener('click', () => copy(state.ref, 'Reference copied'));
+  $('#ppCopy').addEventListener('click', armReference);
   $('#ppDone').addEventListener('click', () => confirmView('PayPal'));
+  armReference();
 }
 
 /* ---------- Benefit Pay ---------- */
@@ -1116,11 +1107,11 @@ function benefitModal() {
       <ol class="steps-ol">
         <li>Open the <b>BenefitPay</b> app and choose <b>Scan</b>.</li>
         <li>Scan the code above and check the amount — <b>${BHD()}</b>.</li>
-        <li>Type your reference <b class="mono">${state.ref}</b> in the remarks / notes field.</li>
+        <li>Paste your reference <b class="mono">${state.ref}</b> in the remarks field — it is already copied.</li>
         <li>Confirm the payment, then come back and tap the button below.</li>
       </ol>
       <div class="modal-foot">
-        <button class="btn btn-ghost btn-block" id="bpCopy">Copy my reference number</button>
+        <button class="btn btn-ghost btn-block" id="bpCopy">Copy the reference again</button>
         <button class="btn btn-gold btn-block" id="bpDone">I've completed the payment</button>
       </div>
       <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
@@ -1128,9 +1119,10 @@ function benefitModal() {
       </p>
     </div>`);
 
-  $('#bpCopy').addEventListener('click', () => copy(state.ref, 'Reference copied'));
+  $('#bpCopy').addEventListener('click', armReference);
   $('#bpDone').addEventListener('click', () => confirmView('Benefit Pay'));
   mountQR();
+  armReference();
 }
 
 /* QR: use the supplied image if it exists, otherwise generate one from qrData. */
@@ -1189,11 +1181,9 @@ function buildInvoice() {
   $('#invMethod').textContent = state.method || '—';
   $('#invRef').textContent    = state.ref;
   $('#invRefFoot').textContent= state.ref;
-  $('#invMerchant').textContent = CONFIG.brand;
   $('#invItem').textContent   = CONFIG.course;
   $('#invItemSub').textContent= CONFIG.courseNote;
   $('#invLineAmt').textContent = amt;
-  $('#invSubtotal').textContent = amt;
   $('#invTotal').textContent  = amt;
   $('#invTxnWrap').hidden     = !state.txn;
   $('#invTxn').textContent    = state.txn || '';
@@ -1215,7 +1205,7 @@ function buildInvoice() {
     CONFIG.merchant.email    ? CONFIG.merchant.email : '',
     CONFIG.merchant.snapchat ? '@' + CONFIG.merchant.snapchat + ' on Snapchat' : ''
   ].filter(Boolean).join(' · ');
-  $('#invContactLine').textContent = contact ? 'Contact us: ' + contact : 'Contact us any time with your reference number.';
+  $('#invContactLine').textContent = contact ? 'Questions: ' + contact : '';
 }
 
 function invoiceText() {
@@ -1322,25 +1312,8 @@ async function sendInvoiceEmail(manual) {
     if (manual) toast('Invoice sent');
   } catch (err) {
     mailStatus('failed',
-      "We couldn't email it automatically — your invoice is below, and the buttons under it will send it.");
+      "We couldn't email it automatically — please save a copy of the invoice below.");
   }
-}
-
-function sendInvoice() {
-  const m = CONFIG.merchant;
-  const body = invoiceText();
-  const subj = `Course enrollment ${state.ref} — ${state.fullName}`;
-  if (m.whatsapp) {
-    window.open(`https://wa.me/${m.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(body)}`,
-      '_blank', 'noopener');
-    return;
-  }
-  if (m.email) {
-    window.location.href =
-      `mailto:${m.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
-    return;
-  }
-  copy(body, 'Details copied — send them to Lioness Prime');
 }
 
 /* ---------- boot ---------- */
@@ -1378,13 +1351,6 @@ function wire() {
 
   $('#resendEmail').addEventListener('click', () => sendInvoiceEmail(true));
   $('#printInvoice').addEventListener('click', () => window.print());
-  $('#copyInvoice').addEventListener('click', () => copy(invoiceText(), 'Invoice details copied'));
-  $('#sendInvoice').addEventListener('click', sendInvoice);
-  $('#startOver').addEventListener('click', () => {
-    if (!confirm('Start a new enrollment? Your current reference number will be cleared.')) return;
-    try { localStorage.removeItem(STORE); } catch (e) {}
-    location.reload();
-  });
 }
 
 function restore() {
