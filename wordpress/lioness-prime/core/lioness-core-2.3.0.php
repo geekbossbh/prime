@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.2.2.
+ * Lioness Prime — core, version 2.3.0.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.2.2' );
+define( 'LIONESS_VERSION', '2.3.0' );
 
 /**
  * The plugin's own directory and URL.
@@ -1160,7 +1160,15 @@ add_action( 'admin_init', function () {
 		return;
 	}
 	set_transient( 'lioness_admin_checked', 1, 10 * MINUTE_IN_SECONDS );
-	if ( lioness_auto_update() && ! empty( lioness_update_available() ) ) {
+
+	if ( ! lioness_auto_update() ) {
+		return;
+	}
+	// Ask the repository directly rather than trusting the hourly cache, so a
+	// release lands within minutes of opening the admin instead of within the
+	// hour. This runs at most once every ten minutes, per the transient above.
+	$latest = lioness_manifest( true );
+	if ( ! empty( $latest['version'] ) && version_compare( $latest['version'], LIONESS_VERSION, '>' ) ) {
 		lioness_run_update();
 	}
 } );
