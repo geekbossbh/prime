@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.2.1.
+ * Lioness Prime — core, version 2.2.2.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.2.1' );
+define( 'LIONESS_VERSION', '2.2.2' );
 
 /**
  * The plugin's own directory and URL.
@@ -405,7 +405,15 @@ add_action( 'init', function () {
 		'public'          => false,      // never a front-end URL
 		'publicly_queryable' => false,
 		'exclude_from_search' => true,
-		'show_in_rest'    => false,      // never served over the REST API
+		/*
+		 * Readable over REST, but only by someone signed in who can edit posts:
+		 * WordPress requires that capability for a post type whose `public` is
+		 * false, and the filter below refuses anonymous callers outright. This
+		 * is what lets enrollments be managed from outside the admin screens;
+		 * it is not a way in from the open web.
+		 */
+		'show_in_rest'    => true,
+		'rest_base'       => 'lp_enrollment',
 		'show_ui'         => true,
 		'show_in_menu'    => true,
 		'menu_icon'       => 'dashicons-tickets-alt',
@@ -445,6 +453,17 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		}
 	}
 }, 10, 2 );
+
+/** Enrollment records are never served to a caller who is not signed in. */
+add_filter( 'rest_pre_dispatch', function ( $result, $server, $request ) {
+	if ( 0 !== strpos( $request->get_route(), '/wp/v2/lp_enrollment' ) ) {
+		return $result;
+	}
+	if ( ! is_user_logged_in() || ! current_user_can( 'edit_posts' ) ) {
+		return new WP_Error( 'lioness_forbidden', 'Enrollments are not public.', array( 'status' => 401 ) );
+	}
+	return $result;
+}, 10, 3 );
 
 /* -------------------------------------------------------------------------
  * Payment screenshots
