@@ -19,9 +19,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( ! defined( 'LIONESS_MERCHANT_EMAIL' ) ) {
 	define( 'LIONESS_MERCHANT_EMAIL', 'hi@prime.aasaad.com' );
 }
+/**
+ * Address copied on every invoice, the buyer's and the merchant's alike.
+ * Sent as Bcc so buyers never see it; change 'Bcc' to 'Cc' in lioness_headers()
+ * below if you would rather it were visible on the message.
+ */
+if ( ! defined( 'LIONESS_INVOICE_COPY' ) ) {
+	define( 'LIONESS_INVOICE_COPY', 'angel.lionness@gmail.com' );
+}
 /** Address the invoice is sent from. Must be on a domain this site may send for. */
 if ( ! defined( 'LIONESS_FROM_EMAIL' ) ) {
 	define( 'LIONESS_FROM_EMAIL', 'hi@prime.aasaad.com' );
+}
+/** Largest payment screenshot accepted, in megabytes. */
+if ( ! defined( 'LIONESS_MAX_PROOF_MB' ) ) {
+	define( 'LIONESS_MAX_PROOF_MB', 10 );
 }
 /** Most invoices one visitor may trigger per hour. */
 if ( ! defined( 'LIONESS_RATE_LIMIT' ) ) {
@@ -98,6 +110,7 @@ add_filter( 'manage_lp_enrollment_posts_columns', function ( $cols ) {
 		'title'     => 'Reference',
 		'lp_who'    => 'Buyer',
 		'lp_pay'    => 'Payment',
+		'lp_proof'  => 'Proof',
 		'lp_amount' => 'Amount',
 		'date'      => 'Received',
 	);
@@ -113,6 +126,14 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 	} elseif ( 'lp_pay' === $col ) {
 		$txn = $get( 'lp_transaction' );
 		echo $get( 'lp_method' ) . ( '' !== $txn ? '<br><small>' . $txn . '</small>' : '' );
+	} elseif ( 'lp_proof' === $col ) {
+		$url = (string) get_post_meta( $post_id, 'lp_proof_url', true );
+		if ( '' !== $url ) {
+			echo '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener"><img src="' . esc_url( $url )
+				. '" alt="Payment screenshot" style="width:56px;height:56px;object-fit:cover;border-radius:6px"></a>';
+		} else {
+			echo '<span style="color:#b3b3b3">none</span>';
+		}
 	} elseif ( 'lp_amount' === $col ) {
 		echo $get( 'lp_amount' );
 	}
@@ -206,8 +227,18 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'amount'      => $clean( 'amount', 40 ),
 		'method'      => $clean( 'method', 40 ),
 		'transaction' => $clean( 'transaction', 80 ),
+		'proof_url'   => '',
 		'date'        => date_i18n( 'd M Y, H:i' ),
 	);
+
+	// The payment screenshot. Never trust what the browser says it is: the bytes
+	// are decoded and identified here, and anything that is not a real JPEG, PNG
+	// or WebP is dropped rather than written to disk.
+	$proof = lioness_store_proof(
+		(string) $request->get_param( 'proof_base64' ),
+		$data['reference']
+	);
+	$data['proof_url'] = $proof ? (string) $proof['url'] : '';
 
 	// Keep the record first, so an enrollment is never lost to a mail failure.
 	$post_id = wp_insert_post( array(
@@ -218,6 +249,12 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	if ( $post_id && ! is_wp_error( $post_id ) ) {
 		foreach ( array( 'name', 'email', 'snapchat', 'phone', 'reference', 'amount', 'method', 'transaction' ) as $k ) {
 			update_post_meta( $post_id, 'lp_' . $k, $data[ $k ] );
+		}
+		if ( $proof ) {
+			update_post_meta( $post_id, 'lp_proof_url', $proof['url'] );
+			update_post_meta( $post_id, 'lp_proof_id', $proof['id'] );
+			wp_update_post( array( 'ID' => $proof['id'], 'post_parent' => $post_id ) );
+			set_post_thumbnail( $post_id, $proof['id'] );
 		}
 	}
 
@@ -232,18 +269,86 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		LIONESS_MERCHANT_EMAIL,
 		sprintf( 'New enrollment — %s (%s)', $data['name'], $data['reference'] ),
 		lioness_invoice_html( $data, true ),
-		lioness_headers( $email )
+		lioness_headers( $email ),
+		$proof ? array( $proof['path'] ) : array()
 	);
 
 	return new WP_REST_Response( array( 'ok' => (bool) $sent_buyer, 'reference' => $data['reference'] ), $sent_buyer ? 200 : 502 );
 }
 
-function lioness_headers( $reply_to ) {
+/**
+ * Saves the buyer's payment screenshot into the media library.
+ *
+ * @param string $b64 Raw base64 payload from the request (no data: prefix).
+ * @param string $ref The enrollment reference, used only to name the file.
+ * @return array|null { id, url, path } or null when there is nothing usable.
+ */
+function lioness_store_proof( $b64, $ref ) {
+	$b64 = preg_replace( '#^data:[^;]+;base64,#', '', trim( $b64 ) );
+	if ( '' === $b64 ) {
+		return null;
+	}
+	// Base64 inflates by about a third; check before decoding.
+	if ( strlen( $b64 ) > LIONESS_MAX_PROOF_MB * 1024 * 1024 * 1.4 ) {
+		return null;
+	}
+	$bytes = base64_decode( $b64, true );
+	if ( false === $bytes || strlen( $bytes ) < 128 ) {
+		return null;
+	}
+	if ( strlen( $bytes ) > LIONESS_MAX_PROOF_MB * 1024 * 1024 ) {
+		return null;
+	}
+
+	// Identify the image from its own content, not from anything the caller said.
+	$info = @getimagesizefromstring( $bytes );
+	if ( ! $info || empty( $info['mime'] ) ) {
+		return null;
+	}
+	$allowed = array(
+		'image/jpeg' => 'jpg',
+		'image/png'  => 'png',
+		'image/webp' => 'webp',
+	);
+	if ( ! isset( $allowed[ $info['mime'] ] ) ) {
+		return null;
+	}
+
+	$name   = sprintf( 'proof-%s-%s.%s', strtolower( $ref ), wp_generate_password( 8, false, false ), $allowed[ $info['mime'] ] );
+	$upload = wp_upload_bits( sanitize_file_name( $name ), null, $bytes );
+	if ( ! empty( $upload['error'] ) || empty( $upload['file'] ) ) {
+		return null;
+	}
+
+	$attachment_id = wp_insert_attachment( array(
+		'post_mime_type' => $info['mime'],
+		'post_title'     => sprintf( 'Payment proof %s', $ref ),
+		'post_status'    => 'inherit',
+	), $upload['file'] );
+
+	if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+		return null;
+	}
+	require_once ABSPATH . 'wp-admin/includes/image.php';
+	wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $upload['file'] ) );
+
 	return array(
+		'id'   => $attachment_id,
+		'url'  => $upload['url'],
+		'path' => $upload['file'],
+	);
+}
+
+function lioness_headers( $reply_to ) {
+	$headers = array(
 		'Content-Type: text/html; charset=UTF-8',
 		sprintf( 'From: Lioness Prime <%s>', LIONESS_FROM_EMAIL ),
 		sprintf( 'Reply-To: %s', $reply_to ),
 	);
+	if ( '' !== trim( LIONESS_INVOICE_COPY ) ) {
+		$headers[] = sprintf( 'Bcc: %s', LIONESS_INVOICE_COPY );
+	}
+	return $headers;
 }
 
 function lioness_invoice_html( array $d, $for_merchant ) {
@@ -277,7 +382,13 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 		. $row( 'Amount', $d['amount'] )
 		. $row( 'Paid via', $d['method'] )
 		. ( '' !== $d['transaction'] && '—' !== $d['transaction'] ? $row( 'Transaction no.', $d['transaction'] ) : '' )
+		. ( '' !== $d['proof_url'] ? $row( 'Proof of payment', 'Attached' ) : '' )
 		. '</table>'
+		. ( '' !== $d['proof_url']
+			? '<div style="margin-top:18px"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#7A6E8C;margin-bottom:8px">Payment screenshot</div>'
+				. '<a href="' . esc_url( $d['proof_url'] ) . '"><img src="' . esc_url( $d['proof_url'] )
+				. '" alt="Payment screenshot" style="max-width:100%;border-radius:10px;border:1px solid #ECE6F3"></a></div>'
+			: '' )
 		. '<div style="margin:20px 0 0;padding:16px 18px;background:#FCF7E8;border:1px solid #F1E4B9;border-radius:10px;font-size:13.5px;color:#6B540F">'
 		. 'Status: payment submitted, pending confirmation. This invoice records the purchase; it is not confirmation that the funds have cleared.'
 		. '</div>'

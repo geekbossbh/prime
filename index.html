@@ -270,6 +270,32 @@ section{padding:74px 0}
   font-size:12.5px; font-weight:500}
 .modal-foot{display:grid; gap:10px; margin-top:22px; padding-top:18px; border-top:1px solid var(--line)}
 
+/* proof of payment */
+.dropzone{display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center;
+  padding:22px 18px; border:1.5px dashed var(--purple-line); border-radius:var(--r-s);
+  background:var(--purple-wash); cursor:pointer; transition:.18s}
+.dropzone:hover,.dropzone.over{border-color:var(--purple-mid); background:#F1E8FB}
+.dropzone svg{width:24px; height:24px; color:var(--purple)}
+.dropzone b{font-size:14.5px; font-weight:500; color:var(--purple-deep)}
+.dropzone span{font-size:12.4px; color:var(--muted)}
+.field.bad .dropzone{border-color:#D6455E; background:#FDF1F3}
+.proof-preview{display:flex; align-items:center; gap:13px; padding:11px; border:1px solid var(--purple-line);
+  border-radius:var(--r-s); background:#fff}
+.proof-preview img{width:54px; height:54px; object-fit:cover; border-radius:9px; flex:0 0 54px;
+  border:1px solid var(--line)}
+.proof-preview .meta{min-width:0; flex:1}
+.proof-preview .meta b{display:block; font-size:14px; font-weight:500; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.proof-preview .meta span{font-size:12.4px; color:var(--muted)}
+.proof-preview button{border:0; background:none; color:var(--muted); cursor:pointer; font-size:12.8px;
+  text-decoration:underline; padding:4px}
+.proof-preview button:hover{color:#C33A52}
+.inv-proof{display:flex; align-items:center; gap:14px; margin-top:20px; padding:14px 16px;
+  border:1px solid var(--line); border-radius:var(--r-s); background:var(--cream)}
+.inv-proof img{width:64px; height:64px; object-fit:cover; border-radius:9px; border:1px solid var(--line)}
+.inv-proof div{font-size:13.6px; color:var(--ink-soft)}
+.inv-proof b{display:block; color:var(--ink); font-weight:500; font-size:14.4px; margin-bottom:2px}
+
 /* invoice */
 .invoice{border:1px solid var(--purple-line); border-radius:20px; overflow:hidden; background:#fff}
 .inv-head{display:flex; flex-wrap:wrap; gap:16px; justify-content:space-between; align-items:flex-start;
@@ -698,6 +724,11 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
                 <div class="r"><span>Discount</span><span>—</span></div>
                 <div class="r grand"><span>Total</span><span id="invTotal">—</span></div>
               </div>
+
+              <div class="inv-proof" id="invProof" hidden>
+                <img id="invProofImg" alt="Payment screenshot">
+                <div><b>Proof of payment attached</b><br><span id="invProofMeta">Sent with this invoice.</span></div>
+              </div>
             </div>
             <div class="inv-foot">
               This invoice confirms the purchase of the Lioness Prime Course subscription. Access is granted after the
@@ -799,6 +830,15 @@ const CONFIG = {
     iban: ''
   },
 
+  // ---- PROOF OF PAYMENT ----------------------------------------------------
+  // Buyers attach a screenshot of their payment before the invoice is issued.
+  // Set required:false to let them skip it.
+  proof: {
+    required: true,
+    maxMB: 8,          // largest file accepted from the buyer
+    maxDimension: 1400 // screenshots are scaled down to this before uploading
+  },
+
   // ---- EMAILING THE INVOICE ------------------------------------------------
   // Sends the invoice to the buyer AND to you, straight from the page.
   // No mail server, no domain, no noreply@ address: EmailJS sends through your
@@ -838,7 +878,8 @@ const USD = () => money(CONFIG.price.usd, CONFIG.paypal.currency);
 
 let state = {
   step: 1, ref: '', fullName: '', email: '', snap: '', dial: '+973',
-  phone: '', method: '', txn: '', paidAt: '', createdAt: '', emailed: false
+  phone: '', method: '', txn: '', paidAt: '', createdAt: '', emailed: false,
+  proofName: '', proofSize: 0
 };
 
 /* ---------- storage ---------- */
@@ -937,6 +978,86 @@ function paintStep2() {
   $('#dueLine').textContent = `${BHD()} (Benefit Pay) or ${USD()} (PayPal)`;
 }
 
+/* ---------- proof of payment ---------- */
+/* The screenshot lives in memory only: it is far too large for localStorage,
+   and it is needed just once, on the way out with the invoice. */
+let proof = null;   // { dataUrl, mime, name, bytes }
+
+const prettyBytes = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+                                      : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+/* Screenshots off a phone are huge; scale them down before they go anywhere. */
+function shrinkImage(file, maxDim, quality) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const raw = reader.result;
+      const img = new Image();
+      // Formats the canvas cannot decode (HEIC on some phones) fall back to the
+      // original bytes and are checked on the server instead.
+      img.onerror = () => resolve({ dataUrl: raw, mime: file.type || 'image/jpeg' });
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width  = Math.max(1, Math.round(img.width  * scale));
+          c.height = Math.max(1, Math.round(img.height * scale));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve({ dataUrl: c.toDataURL('image/jpeg', quality), mime: 'image/jpeg' });
+        } catch (e) {
+          resolve({ dataUrl: raw, mime: file.type || 'image/jpeg' });
+        }
+      };
+      img.src = raw;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderProof() {
+  const box = $('#proofPreview'), drop = $('#proofDrop');
+  if (!box) return;
+  box.hidden = !proof;
+  if (drop) drop.hidden = !!proof;
+  if (!proof) return;
+  box.innerHTML = `
+    <img src="${proof.dataUrl}" alt="">
+    <div class="meta"><b>${proof.name}</b><span>${prettyBytes(proof.bytes)} · ready to send</span></div>
+    <button type="button" id="proofClear">Remove</button>`;
+  $('#proofClear').addEventListener('click', () => {
+    proof = null;
+    const input = $('#proofIn'); if (input) input.value = '';
+    renderProof();
+  });
+}
+
+async function acceptProof(file) {
+  const field = $('#proofField'), err = $('#proofErr');
+  const fail = msg => {
+    if (err) err.textContent = msg;
+    if (field) field.classList.add('bad');
+    proof = null; renderProof();
+  };
+  if (!file) return;
+  if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) {
+    return fail('That file is not an image — attach a screenshot instead.');
+  }
+  if (file.size > CONFIG.proof.maxMB * 1048576) {
+    return fail(`That image is ${prettyBytes(file.size)}. Please keep it under ${CONFIG.proof.maxMB} MB.`);
+  }
+  if (field) field.classList.remove('bad');
+  const shrunk = await shrinkImage(file, CONFIG.proof.maxDimension, 0.82);
+  if (!shrunk) return fail("That image couldn't be read. Try a different screenshot.");
+  proof = {
+    dataUrl: shrunk.dataUrl,
+    mime:    shrunk.mime,
+    name:    file.name || 'payment-screenshot.jpg',
+    bytes:   Math.round((shrunk.dataUrl.length - shrunk.dataUrl.indexOf(',') - 1) * 0.75)
+  };
+  renderProof();
+}
+
 /* ---------- modal plumbing ---------- */
 let lastFocus = null;
 function openModal(html) {
@@ -974,7 +1095,7 @@ function confirmView(method) {
     <div class="modal-top">
       <div>
         <h3>Confirm your payment</h3>
-        <p>Paid with ${method}? Add the transaction number if you have it — it speeds up confirmation.</p>
+        <p>Paid with ${method}? Attach your payment screenshot so we can confirm it quickly.</p>
       </div>
       <button class="modal-x" data-close aria-label="Close">×</button>
     </div>
@@ -982,7 +1103,19 @@ function confirmView(method) {
       ${refRow()}
       <div class="rowline"><span class="k">Method</span><span class="v">${method}</span></div>
       <div class="rowline"><span class="k">Amount</span><span class="v">${method === 'PayPal' ? USD() : BHD()}</span></div>
-      <div class="field" style="margin-top:18px">
+      <div class="field" id="proofField" style="margin-top:20px">
+        <label for="proofIn">Screenshot of your payment ${CONFIG.proof.required ? '<span class="req">*</span>' : '<span style="color:var(--muted)">(optional)</span>'}</label>
+        <label class="dropzone" id="proofDrop" for="proofIn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          <b>Tap to attach your payment screenshot</b>
+          <span>The confirmation from ${method === 'PayPal' ? 'PayPal' : 'the BenefitPay app'} — JPG or PNG, up to ${CONFIG.proof.maxMB} MB</span>
+        </label>
+        <input id="proofIn" type="file" accept="image/*" hidden>
+        <div class="proof-preview" id="proofPreview" hidden></div>
+        <span class="err" id="proofErr">Please attach a screenshot of your payment.</span>
+      </div>
+
+      <div class="field" style="margin-top:16px">
         <label for="txnIn">Transaction / receipt number <span style="color:var(--muted)">(optional)</span></label>
         <input id="txnIn" type="text" placeholder="From your payment confirmation" autocapitalize="characters">
         <span class="hint">Leave it blank if you don't have it yet — your reference is enough.</span>
@@ -993,11 +1126,32 @@ function confirmView(method) {
       </div>
     </div>`);
 
+  proof = null;
+  renderProof();
+  $('#proofIn').addEventListener('change', e => acceptProof(e.target.files[0]));
+
+  const drop = $('#proofDrop');
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add('over');
+  }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.remove('over');
+    if (ev === 'drop' && e.dataTransfer.files[0]) acceptProof(e.dataTransfer.files[0]);
+  }));
+
   $('#confirmPaid').addEventListener('click', () => {
+    if (CONFIG.proof.required && !proof) {
+      $('#proofErr').textContent = 'Please attach a screenshot of your payment.';
+      $('#proofField').classList.add('bad');
+      $('#proofDrop').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
     state.method = method;
     state.txn = $('#txnIn').value.trim();
     state.paidAt = new Date().toISOString();
     state.emailed = false;
+    state.proofName = proof ? proof.name : '';
+    state.proofSize = proof ? proof.bytes : 0;
     save(); closeModal(); buildInvoice(); goStep(3);
     sendInvoiceEmail(false);
   });
@@ -1161,6 +1315,19 @@ function buildInvoice() {
   $('#invTxnWrap').hidden     = !state.txn;
   $('#invTxn').textContent    = state.txn || '';
 
+  const proofBox = $('#invProof');
+  if (proof) {
+    proofBox.hidden = false;
+    $('#invProofImg').src = proof.dataUrl;
+    $('#invProofMeta').textContent = `${state.proofName} · ${prettyBytes(state.proofSize)} · sent with this invoice.`;
+  } else if (state.proofName) {
+    proofBox.hidden = false;
+    $('#invProofImg').remove();
+    $('#invProofMeta').textContent = `${state.proofName} — sent with your invoice.`;
+  } else {
+    proofBox.hidden = true;
+  }
+
   const contact = [
     CONFIG.merchant.email    ? CONFIG.merchant.email : '',
     CONFIG.merchant.snapchat ? '@' + CONFIG.merchant.snapchat + ' on Snapchat' : ''
@@ -1184,6 +1351,7 @@ function invoiceText() {
     `Amount:       ${invoiceAmount()}`,
     `Paid via:     ${state.method}`,
     state.txn ? `Transaction:  ${state.txn}` : '',
+    state.proofName ? `Proof:        ${state.proofName} (attached)` : 'Proof:        not attached',
     ``,
     `Status:       Payment submitted — pending confirmation`
   ].filter(l => l !== undefined).join('\n');
@@ -1245,7 +1413,10 @@ function emailParams() {
     amount:        invoiceAmount(),
     method:        state.method || '—',
     transaction:   state.txn || '—',
-    invoice_text:  invoiceText()
+    invoice_text:  invoiceText(),
+    proof_name:    proof ? proof.name : '',
+    proof_mime:    proof ? proof.mime : '',
+    proof_base64:  proof ? proof.dataUrl.slice(proof.dataUrl.indexOf(',') + 1) : ''
   };
 }
 

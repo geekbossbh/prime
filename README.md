@@ -24,9 +24,12 @@ with your new artwork at the same sizes.
    on the same page; nobody is sent to a different page.
    A reference number (`LP-YYMM-XXXX`) is generated and shown on both options,
    so the buyer and Lioness Prime quote the same code.
-3. **Invoice** — a printable invoice for the course appears immediately, with the
-   reference, the details, the amount and the payment method. It can be printed,
-   saved as PDF, copied, or sent to you in one tap.
+3. **Proof of payment** — confirming the payment requires attaching a screenshot
+   of it. The image is scaled down in the browser, shown back to the buyer, and
+   travels with the invoice.
+4. **Invoice** — a printable invoice for the course appears immediately, with the
+   reference, the details, the amount, the payment method and the screenshot. It
+   can be printed, saved as PDF, copied, or sent to you in one tap.
 
 Entries are kept in the visitor's own browser (`localStorage`) so a refresh
 doesn't lose their reference number. Nothing is transmitted anywhere until they
@@ -45,6 +48,8 @@ Everything configurable lives in one `CONFIG` block near the bottom of
 | `benefit.qrData` | Fallback: your Benefit Pay link; a QR is generated from it if no image exists |
 | `benefit.accountName` / `accountNumber` / `iban` | Optional, shown under the QR for manual transfers |
 | `email.provider` / `endpoint` | `wordpress` + the site's invoice endpoint — see *Emailing the invoice* |
+| `proof.required` | `true` — a payment screenshot must be attached before the invoice |
+| `proof.maxMB` / `maxDimension` | Largest file accepted, and the size it is scaled to |
 | `merchant.email` | Used by the manual "Send my details" button |
 | `merchant.whatsapp` | Digits only, e.g. `97333000000` — takes priority over email |
 | `merchant.snapchat` | Shown on the invoice as a contact |
@@ -82,9 +87,18 @@ Mail goes out through the site itself, which already runs WP Mail SMTP, so it
 arrives from your own address. No third-party mail service, no monthly sending
 limit, no signup, no `noreply@` address.
 
+The buyer's payment screenshot is attached to the copy that reaches you, and shown
+inside both emails.
+
 Every enrollment is also recorded under **Enrollments** in the WP Admin menu, with
-the buyer's details, reference, method and amount — so you have a list to check
-payments against even if an email goes astray.
+the buyer's details, reference, method, amount and a thumbnail of their payment
+screenshot — so you have a list to check payments against even if an email goes
+astray.
+
+**Uploads are checked on the server.** The screenshot is identified by decoding the
+bytes themselves rather than trusting what the browser claims, anything that is not
+a real JPEG, PNG or WebP is discarded, the file is capped at
+`LIONESS_MAX_PROOF_MB`, and it is stored under a generated filename.
 
 **Test the mail before launching.** Go to **WP Mail SMTP → Tools → Email Test** and
 send yourself one. If it does not arrive, mail is not leaving the server and the
