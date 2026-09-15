@@ -94,11 +94,8 @@ header.site{position:sticky; top:env(safe-area-inset-top,0px); z-index:60;
 .amount .num{font-family:'Playfair Display',serif; font-size:50px; font-weight:400; line-height:1}
 .amount .cur{font-size:15px; letter-spacing:.1em; color:var(--muted)}
 .alt-price{font-size:13.5px; color:var(--muted)}
-.price-list{list-style:none; margin:28px 0; padding:26px 0 0; border-top:1px solid var(--line);
-  display:grid; gap:13px}
-.price-list li{display:flex; gap:12px; align-items:flex-start; font-size:14.5px; color:var(--ink-soft)}
-.tick{flex:0 0 14px; width:14px; height:14px; margin-top:5px; display:grid; place-items:center}
-.tick svg{width:11px; height:11px; color:var(--gold)}
+.card-note{margin:28px 0; padding:26px 0 0; border-top:1px solid var(--line);
+  font-size:14.8px; color:var(--ink-soft)}
 
 section{padding:88px 0}
 .sec-head{max-width:620px; margin:0 auto 54px; text-align:center}
@@ -365,7 +362,6 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
         <p class="lede" id="heroLede">A self-paced course in the skills of appreciating visual beauty — learning to see what makes something beautiful, and how to bring that eye to everything you create and carry.</p>
         <div class="hero-cta">
           <a href="#enroll" class="btn btn-gold">Join the course</a>
-          <a href="#how" class="btn btn-ghost">How it works</a>
         </div>
         <div class="chips">
           <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Secure payment</span>
@@ -381,14 +377,9 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
         <div class="sub" id="accessLabel">Full access</div>
         <div class="amount"><span class="cur" id="priceCurMain" style="font-size:26px">$</span><span class="num" id="priceMain">—</span></div>
         <div class="alt-price">or <b id="priceAlt">—</b> via Benefit Pay · one single payment</div>
-        <ul class="price-list">
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span> Every module, from first lesson to last</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span> Private members group on Snapchat</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span> Workbooks &amp; templates to keep</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span> New material added at no extra cost</li>
-        </ul>
+        <p class="card-note" id="cardNote">—</p>
         <a href="#enroll" class="btn btn-gold btn-block">Enroll &amp; pay</a>
-        <p class="alt-price" style="margin-top:14px">Access is sent to your Snapchat within 24 hours of payment.</p>
+        <p class="alt-price" style="margin-top:14px">Access is opened on Snapchat within 24 hours of payment.</p>
       </aside>
     </div>
   </div>
@@ -406,7 +397,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
         <article class="card">
           <div class="ico"><span class="serif" style="color:var(--purple); font-size:19px">1</span></div>
           <h3>Tell us where to send it</h3>
-          <p>Your name, email, Snapchat username and phone number. That's all we need to open your access.</p>
+          <p>Your name, email and Snapchat username. That's all we need to open your access.</p>
         </article>
         <article class="card">
           <div class="ico"><span class="serif" style="color:var(--purple); font-size:19px">2</span></div>
@@ -447,10 +438,10 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
         <div class="panel" id="panel1">
           <form id="detailsForm" novalidate>
             <div class="field-grid">
-              <div class="field full" data-for="fullName">
-                <label for="fullName">Full name <span class="req">*</span></label>
-                <input id="fullName" name="fullName" type="text" autocomplete="name" placeholder="As you'd like it on the invoice">
-                <span class="err">Please enter your full name.</span>
+              <div class="field" data-for="fullName">
+                <label for="fullName">Name <span class="req">*</span></label>
+                <input id="fullName" name="fullName" type="text" autocomplete="name" placeholder="As it should read on the invoice">
+                <span class="err">Please enter your name.</span>
               </div>
 
               <div class="field" data-for="email">
@@ -460,38 +451,16 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
                 <span class="err">Please enter a valid email address.</span>
               </div>
 
-              <div class="field" data-for="snap">
+              <div class="field full" data-for="snap">
                 <label for="snap">Snapchat username <span class="req">*</span></label>
                 <div class="with-prefix">
                   <span class="pfx">@</span>
                   <input id="snap" name="snap" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="yourusername">
                 </div>
-                <span class="hint">We add you to the private members group here.</span>
+                <span class="hint">This is where your access is opened.</span>
                 <span class="err">Enter your Snapchat username (letters, numbers, . _ -).</span>
               </div>
 
-              <div class="field full" data-for="phone">
-                <label for="phone">Phone number <span class="req">*</span></label>
-                <div class="with-prefix">
-                  <select class="pfx" id="dial" aria-label="Country dialling code">
-                    <option value="+973" selected>🇧🇭 +973</option>
-                    <option value="+966">🇸🇦 +966</option>
-                    <option value="+971">🇦🇪 +971</option>
-                    <option value="+965">🇰🇼 +965</option>
-                    <option value="+974">🇶🇦 +974</option>
-                    <option value="+968">🇴🇲 +968</option>
-                    <option value="+962">🇯🇴 +962</option>
-                    <option value="+961">🇱🇧 +961</option>
-                    <option value="+20">🇪🇬 +20</option>
-                    <option value="+44">🇬🇧 +44</option>
-                    <option value="+1">🇺🇸 +1</option>
-                    <option value="other">🌍 Other</option>
-                  </select>
-                  <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="3300 0000">
-                </div>
-                <span class="hint">WhatsApp preferred — used only to confirm your payment.</span>
-                <span class="err">Please enter a valid phone number.</span>
-              </div>
 
               <label class="check">
                 <input type="checkbox" id="consent">
@@ -611,7 +580,6 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
                   <p>
                     <b id="invName">—</b><br>
                     <span id="invEmail">—</span><br>
-                    <span id="invPhone">—</span><br>
                     Snapchat: <span id="invSnap">—</span>
                   </p>
                 </div>
@@ -631,7 +599,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
                 <tbody>
                   <tr>
                     <td><b id="invItem">Lioness Prime Course — Subscription</b>
-                      <small id="invItemSub">Full course access, private members group, workbooks and all future updates.</small></td>
+                      <small id="invItemSub">A course in the skills of appreciating visual beauty.</small></td>
                     <td>1</td>
                     <td id="invLineAmt">—</td>
                   </tr>
@@ -687,8 +655,8 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
         <span class="eyebrow">Questions</span>
         <h2>Before you enroll</h2>
       </div>
-      <details class="faq" open><summary>How soon do I get access?</summary><p>As soon as your payment is matched to your reference number — usually within 24 hours. We message you on Snapchat and email you the course link.</p></details>
-      <details class="faq"><summary>Why do you need my Snapchat username?</summary><p>The private members group and daily material live on Snapchat, so that's where your access is opened. Your username is only used for that.</p></details>
+      <details class="faq" open><summary>How soon do I get access?</summary><p>As soon as your payment is matched to your reference number — usually within 24 hours. We message you on Snapchat once your access is open.</p></details>
+      <details class="faq"><summary>Why do you need my Snapchat username?</summary><p>Your access is opened on Snapchat, so that's where we need to reach you. Your username is used for that and nothing else.</p></details>
       <details class="faq"><summary>What is the reference number for?</summary><p>It's a single code shared by you and Lioness Prime. You add it to your PayPal note or Benefit Pay remarks, and we use it to find your payment instantly — no screenshots, no chasing.</p></details>
       <details class="faq"><summary>Is my payment safe?</summary><p>Yes. This page never sees or stores your card details. PayPal handles PayPal payments, and Benefit Pay is processed inside your own banking app.</p></details>
       <details class="faq"><summary>I paid but didn't hear back.</summary><p>Send us your reference number and the transaction number from your payment app, and we'll confirm it the same day.</p></details>
@@ -726,7 +694,7 @@ const CONFIG = {
   // ---- PRICE ---------------------------------------------------------------
   price: {
     usd: 150.00,   // charged through PayPal
-    bhd: 56.400    // charged through Benefit Pay (USD 150 at the 0.376 BHD peg)
+    bhd: 50        // charged through Benefit Pay
   },
 
   // ---- PAYPAL --------------------------------------------------------------
@@ -789,15 +757,15 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const STORE = 'lioness-prime-enrollment';
 
 const money = (n, cur) => cur === 'BHD'
-  ? n.toFixed(3) + ' BHD'
+  ? (Number.isInteger(n) ? String(n) : n.toFixed(3)) + ' BHD'
   : new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(n);
 
 const BHD = () => money(CONFIG.price.bhd, 'BHD');
 const USD = () => money(CONFIG.price.usd, CONFIG.paypal.currency);
 
 let state = {
-  step: 1, ref: '', fullName: '', email: '', snap: '', dial: '+973',
-  phone: '', method: '', txn: '', paidAt: '', createdAt: '', emailed: false,
+  step: 1, ref: '', fullName: '', email: '', snap: '',
+  method: '', txn: '', paidAt: '', createdAt: '', emailed: false,
   proofName: '', proofSize: 0
 };
 
@@ -843,8 +811,7 @@ async function copy(text, msg) {
 /* ---------- validation ---------- */
 const RX = {
   email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i,
-  snap:  /^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$/i,
-  phone: /^[0-9]{6,15}$/
+  snap:  /^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$/i
 };
 function setBad(name, bad) {
   const f = $(`.field[data-for="${name}"]`);
@@ -856,14 +823,12 @@ function validate() {
   const v = {
     fullName: $('#fullName').value.trim(),
     email:    $('#email').value.trim(),
-    snap:     $('#snap').value.trim().replace(/^@+/, ''),
-    phone:    $('#phone').value.replace(/[^0-9]/g, '')
+    snap:     $('#snap').value.trim().replace(/^@+/, '')
   };
   let ok = true;
   ok = setBad('fullName', v.fullName.length < 2) && ok;
   ok = setBad('email',   !RX.email.test(v.email)) && ok;
   ok = setBad('snap',    !RX.snap.test(v.snap)) && ok;
-  ok = setBad('phone',   !RX.phone.test(v.phone)) && ok;
   if (!$('#consent').checked) { ok = false; toast('Please tick the box to continue.'); }
   return ok ? v : null;
 }
@@ -891,7 +856,7 @@ function goStep(n, scroll = true) {
 
 function paintStep2() {
   $('#sumName').textContent = state.fullName;
-  $('#sumContact').textContent = `${state.email} · @${state.snap} · ${state.dial} ${state.phone}`;
+  $('#sumContact').textContent = `${state.email} · @${state.snap}`;
   $('#sumRef').textContent = state.ref;
   $('#noteRef').textContent = state.ref;
   $('#dueLine').textContent = `${BHD()} (Benefit Pay) or ${USD()} (PayPal)`;
@@ -1220,7 +1185,6 @@ function buildInvoice() {
   $('#invDate').textContent   = fmt;
   $('#invName').textContent   = state.fullName;
   $('#invEmail').textContent  = state.email;
-  $('#invPhone').textContent  = state.dial + ' ' + state.phone;
   $('#invSnap').textContent   = '@' + state.snap;
   $('#invMethod').textContent = state.method || '—';
   $('#invRef').textContent    = state.ref;
@@ -1264,7 +1228,6 @@ function invoiceText() {
     `Name:         ${state.fullName}`,
     `Email:        ${state.email}`,
     `Snapchat:     @${state.snap}`,
-    `Phone:        ${state.dial} ${state.phone}`,
     ``,
     `Item:         ${CONFIG.course}`,
     `Amount:       ${invoiceAmount()}`,
@@ -1322,7 +1285,6 @@ function emailParams() {
     first_name:    state.fullName.split(' ')[0] || '',
     email:         state.email,
     snapchat:      '@' + state.snap,
-    phone:         state.dial + ' ' + state.phone,
     reference:     state.ref,
     invoice_no:    'INV-' + state.ref.replace(/^LP-/, ''),
     invoice_date:  d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -1388,6 +1350,7 @@ function paintStatic() {
   $('#priceCurMain').textContent = 'USD';
   $('#priceAlt').textContent     = BHD();
   $('#accessLabel').textContent  = CONFIG.accessLabel;
+  $('#cardNote').textContent     = CONFIG.courseNote;
   $('#ppCurLabel').textContent   = CONFIG.paypal.currency;
   $('#bpCurLabel').textContent   = CONFIG.benefit.currency;
   $('#yr').textContent           = new Date().getFullYear();
@@ -1400,7 +1363,7 @@ function wire() {
     e.preventDefault();
     const v = validate();
     if (!v) { const bad = $('.field.bad input'); if (bad) bad.focus(); return; }
-    Object.assign(state, v, { dial: $('#dial').value === 'other' ? '+' : $('#dial').value });
+    Object.assign(state, v);
     if (!state.ref) { state.ref = makeRef(); state.createdAt = new Date().toISOString(); }
     save(); paintStep2(); goStep(2);
   });
@@ -1430,11 +1393,6 @@ function restore() {
   $('#fullName').value = state.fullName || '';
   $('#email').value    = state.email || '';
   $('#snap').value     = state.snap || '';
-  $('#phone').value    = state.phone || '';
-  if (state.dial) {
-    const opt = [...$('#dial').options].find(o => o.value === state.dial);
-    if (opt) $('#dial').value = state.dial;
-  }
   $('#consent').checked = true;
   paintStep2();
   if (state.step === 3 && state.method) {

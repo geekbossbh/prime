@@ -19,7 +19,7 @@ with your new artwork at the same sizes.
 
 ## What it does
 
-1. **Details** — visitor fills in name, email, Snapchat username and phone.
+1. **Details** — visitor fills in name, email and Snapchat username.
 2. **Payment** — they choose **PayPal** or **Benefit Pay**. Both open in a panel
    on the same page; nobody is sent to a different page.
    A reference number (`LP-YYMM-XXXX`) is generated and shown on both options,
@@ -42,7 +42,7 @@ Everything configurable lives in one `CONFIG` block near the bottom of
 
 | Setting | What to put there |
 | --- | --- |
-| `price.usd` / `price.bhd` | `150.00` USD, and `56.400` BHD (150 USD at Bahrain's 0.376 peg) |
+| `price.usd` / `price.bhd` | `150.00` USD through PayPal, `50` BHD through Benefit Pay |
 | `paypal.link` | Your PayPal payment link (already set) |
 | `benefit.qrImage` | Path to your Benefit Pay QR (`assets/benefit-qr.jpg`) |
 | `benefit.qrData` | Fallback: your Benefit Pay link; a QR is generated from it if no image exists |

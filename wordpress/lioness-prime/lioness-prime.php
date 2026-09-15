@@ -121,8 +121,7 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		return esc_html( (string) get_post_meta( $post_id, $k, true ) );
 	};
 	if ( 'lp_who' === $col ) {
-		echo $get( 'lp_name' ) . '<br><small>' . $get( 'lp_email' ) . ' &middot; ' . $get( 'lp_snapchat' ) .
-			'<br>' . $get( 'lp_phone' ) . '</small>';
+		echo $get( 'lp_name' ) . '<br><small>' . $get( 'lp_email' ) . ' &middot; ' . $get( 'lp_snapchat' ) . '</small>';
 	} elseif ( 'lp_pay' === $col ) {
 		$txn = $get( 'lp_transaction' );
 		echo $get( 'lp_method' ) . ( '' !== $txn ? '<br><small>' . $txn . '</small>' : '' );
@@ -219,7 +218,6 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'name'        => $name,
 		'email'       => $email,
 		'snapchat'    => $clean( 'snapchat', 60 ),
-		'phone'       => $clean( 'phone', 40 ),
 		'reference'   => $ref,
 		'invoice_no'  => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
 		'course'      => $clean( 'course', 160 ),
@@ -247,7 +245,7 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'post_title'  => $data['reference'] . ' — ' . $data['name'],
 	) );
 	if ( $post_id && ! is_wp_error( $post_id ) ) {
-		foreach ( array( 'name', 'email', 'snapchat', 'phone', 'reference', 'amount', 'method', 'transaction' ) as $k ) {
+		foreach ( array( 'name', 'email', 'snapchat', 'reference', 'amount', 'method', 'transaction' ) as $k ) {
 			update_post_meta( $post_id, 'lp_' . $k, $data[ $k ] );
 		}
 		if ( $proof ) {
@@ -396,7 +394,6 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 		. $row( 'Name', $d['name'] )
 		. $row( 'Email', $d['email'] )
 		. $row( 'Snapchat', $d['snapchat'] )
-		. $row( 'Phone', $d['phone'] )
 		. '</table>'
 		. '</div></div></div>';
 }
