@@ -306,6 +306,14 @@ table.items td small{display:block; color:var(--muted); font-size:12.6px; margin
   background:var(--gold-wash); border:1px solid #EFE0AE}
 .done-hero .ring svg{width:28px; height:28px; color:var(--gold-deep)}
 .done-hero h3{font-size:25px; margin-bottom:8px}
+.mail-status{display:inline-flex; align-items:center; gap:9px; margin-top:16px; padding:10px 18px;
+  border-radius:999px; font-size:13.6px; border:1px solid var(--line); background:#fff; color:var(--ink-soft)}
+.mail-status.sending{background:var(--purple-wash); border-color:var(--purple-line); color:var(--purple-deep)}
+.mail-status.sent{background:#EAF7EF; border-color:#C6E8D4; color:#1D6B3F}
+.mail-status.failed{background:var(--gold-wash); border-color:#EFE0AE; color:#7A5E11}
+.mail-status .spin{width:13px; height:13px; border-radius:50%; border:2px solid var(--purple-line);
+  border-top-color:var(--purple); animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .done-hero p{margin:0; color:var(--ink-soft); font-size:15px}
 
 /* faq + footer */
@@ -379,8 +387,8 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
         <img class="seal" src="assets/logo.svg" alt="">
         <h3>Course Subscription</h3>
         <div class="sub" id="accessLabel">Full access</div>
-        <div class="amount"><span class="num" id="priceMain">—</span><span class="cur" id="priceCurMain">BHD</span></div>
-        <div class="alt-price">or <b id="priceAlt">—</b> via PayPal · one single payment</div>
+        <div class="amount"><span class="cur" id="priceCurMain" style="font-size:26px">$</span><span class="num" id="priceMain">—</span></div>
+        <div class="alt-price">or <b id="priceAlt">—</b> via Benefit Pay · one single payment</div>
         <ul class="price-list">
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span> Every module, from first lesson to last</li>
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span> Private members group on Snapchat</li>
@@ -630,6 +638,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
             <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg></div>
             <h3>Thank you, <span id="doneName">friend</span></h3>
             <p>Your enrollment is recorded. Here's your invoice — please keep a copy.</p>
+            <div class="mail-status" id="mailStatus" hidden></div>
           </div>
 
           <div class="invoice" id="invoice">
@@ -693,7 +702,11 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
           </div>
 
           <div class="inv-actions no-print">
-            <button type="button" class="btn btn-purple btn-sm" id="sendInvoice">
+            <button type="button" class="btn btn-purple btn-sm" id="resendEmail" hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+              Email the invoice again
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" id="sendInvoice">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg>
               Send my details to Lioness Prime
             </button>
@@ -749,15 +762,20 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
    ========================================================================== */
 const CONFIG = {
   brand:  'Lioness Prime',
+
+  // ---- LOGO ----------------------------------------------------------------
+  // Drop your own logo in assets/ under any of these names and the page uses it
+  // as-is, everywhere. If none is found, the built-in gold vector mark is used.
+  logoFiles: ['assets/logo.png', 'assets/logo.webp', 'assets/logo.jpg'],
+
   course: 'Lioness Prime Course — Subscription',
   courseNote: 'Full course access, private members group, workbooks and all future updates.',
   accessLabel: 'Full access · one payment',
 
   // ---- PRICE ---------------------------------------------------------------
-  // ⚠️ PLACEHOLDER PRICES — replace with your real ones.
   price: {
-    bhd: 29.900,   // charged through Benefit Pay
-    usd: 79.00     // charged through PayPal
+    usd: 150.00,   // charged through PayPal
+    bhd: 56.400    // charged through Benefit Pay (USD 150 at the 0.376 BHD peg)
   },
 
   // ---- PAYPAL --------------------------------------------------------------
@@ -780,9 +798,21 @@ const CONFIG = {
     iban: ''
   },
 
+  // ---- EMAILING THE INVOICE ------------------------------------------------
+  // Sends the invoice to the buyer AND to you, straight from the page.
+  // No mail server, no domain, no noreply@ address: EmailJS sends through your
+  // own Gmail. Free for 200 emails a month. Setup steps are in README.md.
+  email: {
+    provider: 'emailjs',
+    publicKey:  '',   // EmailJS → Account → Public Key
+    serviceId:  '',   // EmailJS → Email Services → Service ID
+    templateId: '',   // EmailJS → Email Templates → Template ID
+    merchantCopy: 'angel.lionness@gmail.com'   // always copied on every invoice
+  },
+
   // ---- WHERE ENROLLMENTS ARE SENT -----------------------------------------
   merchant: {
-    email: '',            // e.g. 'hello@lionessprime.com'  → enables the email button
+    email: 'angel.lionness@gmail.com',   // used by the manual "send my details" button
     whatsapp: '',         // digits only, e.g. '97333000000' → enables the WhatsApp button
     snapchat: ''          // e.g. 'lionessprime'
   }
@@ -803,7 +833,7 @@ const USD = () => money(CONFIG.price.usd, CONFIG.paypal.currency);
 
 let state = {
   step: 1, ref: '', fullName: '', email: '', snap: '', dial: '+973',
-  phone: '', method: '', txn: '', paidAt: '', createdAt: ''
+  phone: '', method: '', txn: '', paidAt: '', createdAt: '', emailed: false
 };
 
 /* ---------- storage ---------- */
@@ -962,7 +992,9 @@ function confirmView(method) {
     state.method = method;
     state.txn = $('#txnIn').value.trim();
     state.paidAt = new Date().toISOString();
+    state.emailed = false;
     save(); closeModal(); buildInvoice(); goStep(3);
+    sendInvoiceEmail(false);
   });
 }
 
@@ -1080,7 +1112,8 @@ function mountQR() {
       try {
         const qr = qrcode(0, 'M');
         qr.addData(b.qrData); qr.make();
-        slot.outerHTML = qr.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+        // margin must be >= 4 modules (the "quiet zone") or scanners reject the code
+        slot.outerHTML = qr.createSvgTag({ cellSize: 8, margin: 4, scalable: true });
       } catch (e) { missing(); }
     };
     if (window.qrcode) return make();
@@ -1151,6 +1184,76 @@ function invoiceText() {
   ].filter(l => l !== undefined).join('\n');
 }
 
+/* ---------- emailing the invoice (buyer + merchant copy) ---------- */
+function emailReady() {
+  const e = CONFIG.email;
+  return e && e.provider === 'emailjs' && e.publicKey && e.serviceId && e.templateId;
+}
+
+function mailStatus(kind, msg) {
+  const el = $('#mailStatus');
+  if (!el) return;
+  el.hidden = !kind;
+  el.className = 'mail-status ' + (kind || '');
+  el.innerHTML = kind === 'sending'
+    ? `<span class="spin"></span>${msg}`
+    : kind === 'sent'
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>${msg}`
+      : msg;
+}
+
+function loadEmailJS() {
+  if (window.emailjs) return Promise.resolve(window.emailjs);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
+    s.onload = () => {
+      try { window.emailjs.init({ publicKey: CONFIG.email.publicKey }); resolve(window.emailjs); }
+      catch (e) { reject(e); }
+    };
+    s.onerror = () => reject(new Error('EmailJS did not load'));
+    document.head.appendChild(s);
+  });
+}
+
+function emailParams() {
+  const d = state.paidAt ? new Date(state.paidAt) : new Date();
+  return {
+    to_email:      state.email,
+    cc_email:      CONFIG.email.merchantCopy,
+    reply_to:      CONFIG.email.merchantCopy,
+    brand:         CONFIG.brand,
+    customer_name: state.fullName,
+    first_name:    state.fullName.split(' ')[0] || '',
+    email:         state.email,
+    snapchat:      '@' + state.snap,
+    phone:         state.dial + ' ' + state.phone,
+    reference:     state.ref,
+    invoice_no:    'INV-' + state.ref.replace(/^LP-/, ''),
+    invoice_date:  d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    course:        CONFIG.course,
+    amount:        invoiceAmount(),
+    method:        state.method || '—',
+    transaction:   state.txn || '—',
+    invoice_text:  invoiceText()
+  };
+}
+
+async function sendInvoiceEmail(manual) {
+  if (!emailReady()) { mailStatus(null); return; }
+  mailStatus('sending', 'Emailing your invoice…');
+  try {
+    const ejs = await loadEmailJS();
+    await ejs.send(CONFIG.email.serviceId, CONFIG.email.templateId, emailParams());
+    state.emailed = true; save();
+    mailStatus('sent', `Invoice emailed to ${state.email} — a copy went to ${CONFIG.brand}.`);
+    if (manual) toast('Invoice sent');
+  } catch (err) {
+    mailStatus('failed',
+      "We couldn't email it automatically — your invoice is below, and the buttons under it will send it.");
+  }
+}
+
 function sendInvoice() {
   const m = CONFIG.merchant;
   const body = invoiceText();
@@ -1169,10 +1272,31 @@ function sendInvoice() {
 }
 
 /* ---------- boot ---------- */
+/* Swap in the supplied logo artwork if any of CONFIG.logoFiles resolves. */
+function mountLogo() {
+  const slots = $$('img[src$="logo.svg"]');
+  if (!slots.length) return;
+  const tryNext = i => {
+    if (i >= CONFIG.logoFiles.length) return;          // keep the vector mark
+    const src = CONFIG.logoFiles[i];
+    const probe = new Image();
+    probe.onload = () => slots.forEach(el => {
+      el.src = src;
+      el.style.objectFit = 'contain';
+      el.style.width = 'auto';
+      el.style.maxHeight = getComputedStyle(el).height;
+    });
+    probe.onerror = () => tryNext(i + 1);
+    probe.src = src;
+  };
+  tryNext(0);
+}
+
 function paintStatic() {
-  $('#priceMain').textContent    = CONFIG.price.bhd.toFixed(3);
-  $('#priceCurMain').textContent = CONFIG.benefit.currency;
-  $('#priceAlt').textContent     = USD();
+  $('#resendEmail').hidden = !emailReady();
+  $('#priceMain').textContent    = CONFIG.price.usd.toFixed(0);
+  $('#priceCurMain').textContent = 'USD';
+  $('#priceAlt').textContent     = BHD();
   $('#accessLabel').textContent  = CONFIG.accessLabel;
   $('#ppCurLabel').textContent   = CONFIG.paypal.currency;
   $('#bpCurLabel').textContent   = CONFIG.benefit.currency;
@@ -1199,6 +1323,7 @@ function wire() {
   $('#openPaypal').addEventListener('click', paypalModal);
   $('#openBenefit').addEventListener('click', benefitModal);
 
+  $('#resendEmail').addEventListener('click', () => sendInvoiceEmail(true));
   $('#printInvoice').addEventListener('click', () => window.print());
   $('#copyInvoice').addEventListener('click', () => copy(invoiceText(), 'Invoice details copied'));
   $('#sendInvoice').addEventListener('click', sendInvoice);
@@ -1222,11 +1347,15 @@ function restore() {
   }
   $('#consent').checked = true;
   paintStep2();
-  if (state.step === 3 && state.method) { buildInvoice(); goStep(3, false); }
+  if (state.step === 3 && state.method) {
+    buildInvoice(); goStep(3, false);
+    if (state.emailed) mailStatus('sent', `Invoice emailed to ${state.email}.`);
+  }
   else if (state.step === 2) goStep(2, false);
 }
 
 paintStatic();
+mountLogo();
 wire();
 restore();
 </script>
