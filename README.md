@@ -79,9 +79,16 @@ new zip over the old plugin (WordPress asks you to confirm replacing it).
 
 ## Emailing the invoice
 
-When a buyer confirms their payment the invoice is emailed automatically — to
-them, copied to **hi@prime.aasaad.com** — carrying the reference number, the
-amount, the payment method and the course description.
+When a buyer confirms their payment, two emails go out:
+
+| Email | To | Also receives it | Contents |
+| --- | --- | --- | --- |
+| The invoice | the buyer | `hi@prime.aasaad.com` and the Gmail, as Bcc | Invoice no., date, reference, item, amount, method, transaction no., and their payment screenshot |
+| New enrollment | `hi@prime.aasaad.com` | the Gmail, as Bcc | The same details plus the buyer's name, email and Snapchat, with the screenshot attached as a file |
+
+So both of your addresses receive a copy of the buyer's own invoice **and** the
+full payment details. Both copies are Bcc, so a buyer never sees either address
+on their invoice.
 
 Mail goes out through the site itself, which already runs WP Mail SMTP, so it
 arrives from your own address. No third-party mail service, no monthly sending

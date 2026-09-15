@@ -20,9 +20,9 @@ if ( ! defined( 'LIONESS_MERCHANT_EMAIL' ) ) {
 	define( 'LIONESS_MERCHANT_EMAIL', 'hi@prime.aasaad.com' );
 }
 /**
- * Address copied on every invoice, the buyer's and the merchant's alike.
- * Sent as Bcc so buyers never see it; change 'Bcc' to 'Cc' in lioness_headers()
- * below if you would rather it were visible on the message.
+ * The second address that receives everything, alongside LIONESS_MERCHANT_EMAIL.
+ * Always sent as Bcc, so a buyer never sees either of Lioness Prime's addresses
+ * on their own invoice.
  */
 if ( ! defined( 'LIONESS_INVOICE_COPY' ) ) {
 	define( 'LIONESS_INVOICE_COPY', 'angel.lionness@gmail.com' );
@@ -260,14 +260,14 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		$email,
 		sprintf( 'Your Lioness Prime Course invoice — %s', $data['reference'] ),
 		lioness_invoice_html( $data, false ),
-		lioness_headers( LIONESS_MERCHANT_EMAIL )
+		lioness_headers( LIONESS_MERCHANT_EMAIL, lioness_copy_list() )
 	);
 
 	wp_mail(
 		LIONESS_MERCHANT_EMAIL,
 		sprintf( 'New enrollment — %s (%s)', $data['name'], $data['reference'] ),
 		lioness_invoice_html( $data, true ),
-		lioness_headers( $email ),
+		lioness_headers( $email, LIONESS_INVOICE_COPY ),
 		$proof ? array( $proof['path'] ) : array()
 	);
 
@@ -337,16 +337,25 @@ function lioness_store_proof( $b64, $ref ) {
 	);
 }
 
-function lioness_headers( $reply_to ) {
+function lioness_headers( $reply_to, $bcc = '' ) {
 	$headers = array(
 		'Content-Type: text/html; charset=UTF-8',
 		sprintf( 'From: Lioness Prime <%s>', LIONESS_FROM_EMAIL ),
 		sprintf( 'Reply-To: %s', $reply_to ),
 	);
-	if ( '' !== trim( LIONESS_INVOICE_COPY ) ) {
-		$headers[] = sprintf( 'Bcc: %s', LIONESS_INVOICE_COPY );
+	$bcc = trim( (string) $bcc, " \t," );
+	if ( '' !== $bcc ) {
+		$headers[] = sprintf( 'Bcc: %s', $bcc );
 	}
 	return $headers;
+}
+
+/** Both of Lioness Prime's own addresses, as a Bcc list. */
+function lioness_copy_list() {
+	return implode( ', ', array_filter( array_map( 'trim', array(
+		LIONESS_MERCHANT_EMAIL,
+		LIONESS_INVOICE_COPY,
+	) ) ) );
 }
 
 function lioness_invoice_html( array $d, $for_merchant ) {
