@@ -1,11 +1,12 @@
 <?php
 /**
- * Plugin Name: Lioness Prime — Invoice Mailer
- * Description: Emails the course invoice to the buyer and to Lioness Prime when someone
- *              confirms a payment on the enrollment page, and keeps a record of every
- *              enrollment under Enrollments in the admin menu. Uses this site's own mail
- *              (WP Mail SMTP), so no external mail service is involved.
- * Version:     1.0.0
+ * Plugin Name: Lioness Prime — Course Page
+ * Description: Serves the Lioness Prime Course enrollment page at the site's front page
+ *              and at /course, emails the invoice to the buyer and to Lioness Prime when a
+ *              payment is confirmed, and records every enrollment under Enrollments in the
+ *              admin menu. Mail goes out through this site (WP Mail SMTP), so no external
+ *              mail service is involved.
+ * Version:     1.1.0
  * Author:      Lioness Prime
  * License:     GPL-2.0-or-later
  */
@@ -16,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Where the merchant copy goes. Comma-separate to copy more than one address. */
 if ( ! defined( 'LIONESS_MERCHANT_EMAIL' ) ) {
-	define( 'LIONESS_MERCHANT_EMAIL', 'hi@prime.aasaad.com, angel.lionness@gmail.com' );
+	define( 'LIONESS_MERCHANT_EMAIL', 'hi@prime.aasaad.com' );
 }
 /** Address the invoice is sent from. Must be on a domain this site may send for. */
 if ( ! defined( 'LIONESS_FROM_EMAIL' ) ) {
@@ -26,6 +27,53 @@ if ( ! defined( 'LIONESS_FROM_EMAIL' ) ) {
 if ( ! defined( 'LIONESS_RATE_LIMIT' ) ) {
 	define( 'LIONESS_RATE_LIMIT', 6 );
 }
+/** Serve the course page as the site's front page. Set to false to only use /course. */
+if ( ! defined( 'LIONESS_TAKE_FRONT_PAGE' ) ) {
+	define( 'LIONESS_TAKE_FRONT_PAGE', true );
+}
+
+/* -------------------------------------------------------------------------
+ * Serving the page
+ * ---------------------------------------------------------------------- */
+
+/** True when the visitor asked for /course (with or without a trailing slash). */
+function lioness_is_course_path() {
+	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	$path = trim( (string) wp_parse_url( $uri, PHP_URL_PATH ), '/' );
+	return 'course' === strtolower( $path );
+}
+
+add_action( 'template_redirect', function () {
+	if ( is_admin() || wp_doing_ajax() || is_feed() || is_robots() ) {
+		return;
+	}
+	if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'GET' !== strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) ) {
+		return;
+	}
+	$wanted = lioness_is_course_path() || ( LIONESS_TAKE_FRONT_PAGE && is_front_page() );
+	if ( ! $wanted ) {
+		return;
+	}
+
+	$file = plugin_dir_path( __FILE__ ) . 'page/index.html';
+	if ( ! is_readable( $file ) ) {
+		return;   // fall through to the theme rather than showing a blank page
+	}
+	$html = file_get_contents( $file );
+	if ( false === $html ) {
+		return;
+	}
+
+	// The page refers to its images relatively; point them at the plugin folder.
+	$base = plugin_dir_url( __FILE__ ) . 'page/';
+	$html = str_replace( array( '"assets/', "'assets/" ), array( '"' . $base . 'assets/', "'" . $base . 'assets/' ), $html );
+
+	status_header( 200 );
+	nocache_headers();
+	header( 'Content-Type: text/html; charset=UTF-8' );
+	echo $html; // phpcs:ignore WordPress.Security.EscapeOutput -- a whole HTML document, shipped with the plugin
+	exit;
+}, 0 );
 
 /* -------------------------------------------------------------------------
  * Enrollment record

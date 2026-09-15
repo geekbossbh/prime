@@ -5,11 +5,13 @@ No build step, no backend, no dependencies — open `index.html` and it works.
 
 ```
 index.html                              the whole page (markup, styles, logic)
+build-plugin.sh                         builds the installable WordPress plugin
 assets/logo.png                         the Lioness Prime mark, full resolution
 assets/logo-320.png                     the same mark, web-sized (used on the page)
 assets/favicon.png                      browser tab icon
 assets/benefit-qr.jpg                   the Benefit Pay QR code
-wordpress/lioness-invoice-mailer.php    drop-in plugin that emails the invoice
+wordpress/lioness-prime/                WordPress plugin: serves the page + mails invoices
+dist/lioness-prime.zip                  the built plugin (run ./build-plugin.sh)
 ```
 
 To change the logo later, replace `assets/logo.png` and `assets/logo-320.png`
@@ -50,33 +52,49 @@ Everything configurable lives in one `CONFIG` block near the bottom of
 If neither a WhatsApp number nor an email is set, "Send my details" copies the
 enrollment text to the clipboard instead.
 
+## Putting it live on prime.aasaad.com
+
+The page ships as a small WordPress plugin that does two jobs: it serves the
+enrollment page, and it emails the invoices. One upload covers both.
+
+1. Run `./build-plugin.sh` to produce **`dist/lioness-prime.zip`** (it is rebuilt
+   from `index.html`, `assets/` and the plugin PHP, so run it again after any edit).
+2. In WP Admin go to **Plugins → Add New Plugin → Upload Plugin**, choose the zip,
+   **Install Now**, then **Activate**.
+3. Open **https://prime.aasaad.com** — the course page is there. It is also served
+   at **/course**.
+
+The theme is bypassed entirely, so the page looks exactly as it does locally: no
+site header, no footer, no theme styles. `wp-admin` and everything else on the site
+are untouched. To stop the plugin taking over the front page and keep only
+`/course`, add `define( 'LIONESS_TAKE_FRONT_PAGE', false );` to `wp-config.php`.
+
+To update the page later: edit `index.html`, run `./build-plugin.sh`, and upload the
+new zip over the old plugin (WordPress asks you to confirm replacing it).
+
 ## Emailing the invoice
 
 When a buyer confirms their payment the invoice is emailed automatically — to
-them, copied to you — carrying the reference number, the amount, the payment
-method and the course description.
+them, copied to **hi@prime.aasaad.com** — carrying the reference number, the
+amount, the payment method and the course description.
 
-It sends through **prime.aasaad.com itself**. The site already runs WP Mail SMTP,
-so the mail goes out from your own address. No third-party mail service, no
-monthly sending limit, no signup, and no `noreply@` address.
-
-### Installing the mailer (about two minutes)
-
-1. Zip `wordpress/lioness-invoice-mailer.php` into `lioness-invoice-mailer.zip`.
-2. In WP Admin go to **Plugins → Add New Plugin → Upload Plugin**, choose the zip,
-   install and activate it.
-   (Or copy the `.php` file straight into `wp-content/plugins/` over SFTP and
-   activate it from the Plugins screen.)
-3. That's it — the page is already pointed at the endpoint the plugin creates,
-   `https://prime.aasaad.com/wp-json/lioness/v1/invoice`.
+Mail goes out through the site itself, which already runs WP Mail SMTP, so it
+arrives from your own address. No third-party mail service, no monthly sending
+limit, no signup, no `noreply@` address.
 
 Every enrollment is also recorded under **Enrollments** in the WP Admin menu, with
 the buyer's details, reference, method and amount — so you have a list to check
 payments against even if an email goes astray.
 
-**Who gets the copy.** Edit the `LIONESS_MERCHANT_EMAIL` line at the top of the
-plugin; it is currently `hi@prime.aasaad.com, angel.lionness@gmail.com`. The
-address the invoice is *sent from* is `LIONESS_FROM_EMAIL` on the line below.
+**Test the mail before launching.** Go to **WP Mail SMTP → Tools → Email Test** and
+send yourself one. If it does not arrive, mail is not leaving the server and the
+invoices will not either; configuring WP Mail SMTP fixes that, and nothing about
+this page needs to change.
+
+**Changing the addresses.** `LIONESS_MERCHANT_EMAIL` at the top of the plugin sets
+who gets the copy (comma-separate for more than one). `LIONESS_FROM_EMAIL` on the
+line below sets the address invoices are sent from. Both are
+`hi@prime.aasaad.com`.
 
 **Safety.** The endpoint is public, because the page has no login. It cannot be
 used to send mail to anyone else: recipients are always the buyer's own address
@@ -85,9 +103,8 @@ taken from the request, every field is sanitised, and one visitor may trigger at
 most six invoices an hour.
 
 If the plugin is not installed, the page simply skips the email and falls back to
-the print / copy / send buttons, so nothing breaks in the meantime. Setting
-`email.provider` to `'emailjs'` switches to EmailJS instead if you ever move the
-page off this host.
+the print / copy / send buttons. Setting `email.provider` to `'emailjs'` switches
+to EmailJS instead if you ever move the page off this host.
 
 ### Adding the Benefit Pay QR
 
@@ -108,14 +125,12 @@ pure black rather than warm grey will read more easily in poor light.
 To swap the QR later, replace the file, or put the link the QR contains into
 `benefit.qrData` and the page will draw the code itself as vector.
 
-## Publish it
+## Hosting it somewhere else
 
-Any static host works — Netlify, Vercel, GitHub Pages, Cloudflare Pages, or plain
-shared hosting. Upload `index.html` and the `assets/` folder, keeping them in the
-same relative positions.
-
-For WordPress, the page can be dropped in as a full-width custom template or via a
-plugin that allows raw HTML pages; keep `assets/` reachable at the same relative path.
+The page is plain static HTML, so any host works — Netlify, Vercel, GitHub Pages,
+Cloudflare Pages, shared hosting. Upload `index.html` and `assets/` keeping them in
+the same relative positions. The invoice email still works from another host: it
+posts to the endpoint on prime.aasaad.com, which answers cross-origin requests.
 
 ## Notes
 
