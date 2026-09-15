@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.2.0.
+ * Lioness Prime — core, version 2.2.1.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.2.0' );
+define( 'LIONESS_VERSION', '2.2.1' );
 
 /**
  * The plugin's own directory and URL.
@@ -379,6 +379,18 @@ function lioness_apply_settings_to_page( $html, $base ) {
 	}
 
 	$html = str_replace( 'hi@prime.aasaad.com', esc_html( lioness_merchant_email() ), $html );
+
+	/*
+	 * A marker inside the document rather than a response header. This host
+	 * rewrites headers on the way out — X-Lioness never reaches the client —
+	 * so which version is live could only be inferred from behaviour. In the
+	 * body it survives every cache between here and the browser.
+	 */
+	$html = str_replace(
+		'<meta name="theme-color"',
+		'<meta name="generator" content="Lioness Prime ' . esc_attr( LIONESS_VERSION ) . '">' . "\n" . '<meta name="theme-color"',
+		$html
+	);
 
 	return $html;
 }
