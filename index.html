@@ -622,7 +622,11 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
           <div class="inv-actions no-print">
             <button type="button" class="btn btn-ghost btn-sm" id="resendEmail" hidden>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
-              Send invoice again
+              Send invoice
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" id="viewInvoice">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              View invoice
             </button>
           </div>
         </div>
@@ -1315,6 +1319,41 @@ async function sendInvoiceEmail(manual) {
   }
 }
 
+/* Opens the invoice on its own, carrying the page's styles across so it looks
+   exactly as it does here — ready to save or print. Built with DOM calls rather
+   than a written-out HTML string, so no closing tags live inside this file. */
+function viewInvoice() {
+  const win = window.open('', 'lionessInvoice', 'width=860,height=1040,resizable,scrollbars');
+  if (!win) { toast('Allow pop-ups to open the invoice on its own.'); return; }
+
+  const d = win.document;
+  d.documentElement.lang = 'en';
+  d.title = `Invoice ${state.ref} — ${CONFIG.brand}`;
+
+  const meta = d.createElement('meta');
+  meta.setAttribute('charset', 'utf-8');
+  d.head.appendChild(meta);
+
+  const viewport = d.createElement('meta');
+  viewport.name = 'viewport';
+  viewport.content = 'width=device-width, initial-scale=1';
+  d.head.appendChild(viewport);
+
+  const fonts = d.createElement('link');
+  fonts.rel = 'stylesheet';
+  fonts.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400'
+             + '&family=Jost:wght@300;400;500&display=swap';
+  d.head.appendChild(fonts);
+
+  $$('style').forEach(el => d.head.appendChild(d.importNode(el, true)));
+
+  const pad = d.createElement('style');
+  pad.textContent = 'body{padding:34px;background:#fff}@media(max-width:600px){body{padding:16px}}';
+  d.head.appendChild(pad);
+
+  d.body.appendChild(d.importNode($('#invoice'), true));
+}
+
 /* ---------- boot ---------- */
 function paintStatic() {
   $('#resendEmail').hidden = !emailReady();
@@ -1349,6 +1388,7 @@ function wire() {
   $('#openBenefit').addEventListener('click', benefitModal);
 
   $('#resendEmail').addEventListener('click', () => sendInvoiceEmail(true));
+  $('#viewInvoice').addEventListener('click', viewInvoice);
 }
 
 function restore() {
