@@ -1024,8 +1024,9 @@ function confirmView(method) {
   });
 }
 
-/* The reference has to be typed into a note field in another app, so put it on
-   the clipboard as soon as a payment method is opened. */
+/* The reference has to end up in a note field in another app, so it goes onto
+   the clipboard as soon as a payment method opens. The copy button stays too,
+   for anyone whose clipboard has moved on since. */
 function armReference() {
   copy(state.ref, 'Reference copied — paste it in the payment note');
 }
@@ -1047,7 +1048,7 @@ function paypalModal() {
       <ol class="steps-ol">
         <li>Tap the gold button below — PayPal opens in a secure window.</li>
         <li>Pay with your card or PayPal balance.</li>
-        <li>Paste your reference <b class="mono">${state.ref}</b> into the note field — it is already copied.</li>
+        <li>Paste your reference <b class="mono">${state.ref}</b> into the note field — already copied for you.</li>
         <li>Come back here and confirm — your invoice appears instantly.</li>
       </ol>
       <div class="modal-foot">
@@ -1055,7 +1056,7 @@ function paypalModal() {
           Open secure PayPal window
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>
         </button>
-        <button class="btn btn-ghost btn-block" id="ppCopy">Copy the reference again</button>
+        <button class="btn btn-ghost btn-block" id="ppCopy">Copy my reference number</button>
         <button class="btn btn-purple btn-block" id="ppDone">I've completed the payment</button>
       </div>
       <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
@@ -1072,7 +1073,6 @@ function paypalModal() {
       `width=${w},height=${h},left=${x},top=${y},resizable,scrollbars`);
     if (win) { try { win.opener = null; } catch (e) {} }
     if (!win) toast('Allow pop-ups, or use the link at the bottom of this box.');
-    else toast('Reference copied — paste it in the PayPal note');
   });
   $('#ppCopy').addEventListener('click', armReference);
   $('#ppDone').addEventListener('click', () => confirmView('PayPal'));
@@ -1107,11 +1107,11 @@ function benefitModal() {
       <ol class="steps-ol">
         <li>Open the <b>BenefitPay</b> app and choose <b>Scan</b>.</li>
         <li>Scan the code above and check the amount — <b>${BHD()}</b>.</li>
-        <li>Paste your reference <b class="mono">${state.ref}</b> in the remarks field — it is already copied.</li>
+        <li>Paste your reference <b class="mono">${state.ref}</b> in the remarks field — already copied for you.</li>
         <li>Confirm the payment, then come back and tap the button below.</li>
       </ol>
       <div class="modal-foot">
-        <button class="btn btn-ghost btn-block" id="bpCopy">Copy the reference again</button>
+        <button class="btn btn-ghost btn-block" id="bpCopy">Copy my reference number</button>
         <button class="btn btn-gold btn-block" id="bpDone">I've completed the payment</button>
       </div>
       <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
