@@ -4,11 +4,16 @@ A single, self-contained landing page for the **Lioness Prime Course** subscript
 No build step, no backend, no dependencies — open `index.html` and it works.
 
 ```
-index.html          the whole page (markup, styles, logic)
-assets/logo.svg     the gold Lioness Prime mark
-assets/favicon.svg  browser tab icon
-assets/benefit-qr.png   ← YOU ADD THIS (your Benefit Pay QR code)
+index.html                              the whole page (markup, styles, logic)
+assets/logo.png                         the Lioness Prime mark, full resolution
+assets/logo-320.png                     the same mark, web-sized (used on the page)
+assets/favicon.png                      browser tab icon
+assets/benefit-qr.jpg                   the Benefit Pay QR code
+wordpress/lioness-invoice-mailer.php    drop-in plugin that emails the invoice
 ```
+
+To change the logo later, replace `assets/logo.png` and `assets/logo-320.png`
+with your new artwork at the same sizes.
 
 ## What it does
 
@@ -34,11 +39,10 @@ Everything configurable lives in one `CONFIG` block near the bottom of
 | --- | --- |
 | `price.usd` / `price.bhd` | `150.00` USD, and `56.400` BHD (150 USD at Bahrain's 0.376 peg) |
 | `paypal.link` | Your PayPal payment link (already set) |
-| `benefit.qrImage` | Path to your Benefit Pay QR — save it as `assets/benefit-qr.png` |
+| `benefit.qrImage` | Path to your Benefit Pay QR (`assets/benefit-qr.jpg`) |
 | `benefit.qrData` | Fallback: your Benefit Pay link; a QR is generated from it if no image exists |
 | `benefit.accountName` / `accountNumber` / `iban` | Optional, shown under the QR for manual transfers |
-| `email.publicKey` / `serviceId` / `templateId` | EmailJS keys — see *Emailing the invoice* below |
-| `email.merchantCopy` | Address copied on every invoice (`angel.lionness@gmail.com`) |
+| `email.provider` / `endpoint` | `wordpress` + the site's invoice endpoint — see *Emailing the invoice* |
 | `merchant.email` | Used by the manual "Send my details" button |
 | `merchant.whatsapp` | Digits only, e.g. `97333000000` — takes priority over email |
 | `merchant.snapchat` | Shown on the invoice as a contact |
@@ -48,55 +52,61 @@ enrollment text to the clipboard instead.
 
 ## Emailing the invoice
 
-When a buyer confirms their payment, the invoice is emailed automatically — to
-them, with a copy to `angel.lionness@gmail.com` — carrying the reference number.
+When a buyer confirms their payment the invoice is emailed automatically — to
+them, copied to you — carrying the reference number, the amount, the payment
+method and the course description.
 
-**You do not need a mail server, a domain, or a `noreply@` address.** The page
-sends through your own Gmail using EmailJS, which is free for 200 emails a month.
-Until the three keys below are filled in the page simply skips the email and
-falls back to the print / copy / send buttons, so nothing breaks in the meantime.
+It sends through **prime.aasaad.com itself**. The site already runs WP Mail SMTP,
+so the mail goes out from your own address. No third-party mail service, no
+monthly sending limit, no signup, and no `noreply@` address.
 
-### One-time setup (about five minutes, free)
+### Installing the mailer (about two minutes)
 
-1. Sign up at **emailjs.com** with `angel.lionness@gmail.com`.
-2. **Email Services → Add New Service → Gmail**, connect that same Gmail account.
-   Copy the **Service ID**.
-3. **Email Templates → Create New Template**. Set the fields to:
-   - **To:** `{{to_email}}`
-   - **Cc:** `{{cc_email}}`
-   - **Reply-To:** `{{reply_to}}`
-   - **Subject:** `Your Lioness Prime Course invoice — {{reference}}`
-   - **Content:** write the email and drop the variables in where you want them:
-     `{{first_name}}`, `{{customer_name}}`, `{{invoice_no}}`, `{{invoice_date}}`,
-     `{{reference}}`, `{{course}}`, `{{amount}}`, `{{method}}`, `{{transaction}}`,
-     `{{email}}`, `{{snapchat}}`, `{{phone}}`, and `{{invoice_text}}` for the whole
-     invoice as plain text.
+1. Zip `wordpress/lioness-invoice-mailer.php` into `lioness-invoice-mailer.zip`.
+2. In WP Admin go to **Plugins → Add New Plugin → Upload Plugin**, choose the zip,
+   install and activate it.
+   (Or copy the `.php` file straight into `wp-content/plugins/` over SFTP and
+   activate it from the Plugins screen.)
+3. That's it — the page is already pointed at the endpoint the plugin creates,
+   `https://prime.aasaad.com/wp-json/lioness/v1/invoice`.
 
-   Copy the **Template ID**.
-4. **Account → General**, copy the **Public Key**.
-5. Paste all three into the `email` block in `index.html`.
+Every enrollment is also recorded under **Enrollments** in the WP Admin menu, with
+the buyer's details, reference, method and amount — so you have a list to check
+payments against even if an email goes astray.
 
-Emails arrive from your real Gmail address, so replies go straight back to you.
+**Who gets the copy.** Edit the `LIONESS_MERCHANT_EMAIL` line at the top of the
+plugin; it is currently `hi@prime.aasaad.com, angel.lionness@gmail.com`. The
+address the invoice is *sent from* is `LIONESS_FROM_EMAIL` on the line below.
+
+**Safety.** The endpoint is public, because the page has no login. It cannot be
+used to send mail to anyone else: recipients are always the buyer's own address
+plus the fixed copy list, the message body is built on the server rather than
+taken from the request, every field is sanitised, and one visitor may trigger at
+most six invoices an hour.
+
+If the plugin is not installed, the page simply skips the email and falls back to
+the print / copy / send buttons, so nothing breaks in the meantime. Setting
+`email.provider` to `'emailjs'` switches to EmailJS instead if you ever move the
+page off this host.
 
 ### Adding the Benefit Pay QR
 
-Two ways, best first:
+The supplied QR (`assets/benefit-qr.jpg`, 1024 x 1024) is used as-is and is never
+redrawn or re-encoded.
 
-1. **Give the page the link your QR contains** (`benefit.qrData`). Point your
-   phone camera at your own Benefit QR — it will show a link or a block of text.
-   Copy that exactly into `benefit.qrData` and the page draws the QR itself, as
-   vector, sharp at any size on any screen.
-2. **Or save the QR image** as `assets/benefit-qr.png` — a clean, high-resolution
-   export (600 px or larger, square, no drop shadow, plenty of white around it).
+**About it not scanning.** The file is cropped flush to the edge of the code, with
+no white border. A QR needs a *quiet zone* — a clear margin of at least four
+modules on all four sides — or readers will not lock onto it. The page therefore
+displays it inside a white frame that supplies that margin. If you use the image
+anywhere else (print, a story, a poster), add the same white border around it or it
+will be unreliable there too.
 
-If neither is set, the payment panel shows a "QR code not set up yet" note rather
-than a broken image.
+**Test it before going live:** open the payment panel on a phone and scan the code
+from the screen with BenefitPay. If it still struggles, a version of the code in
+pure black rather than warm grey will read more easily in poor light.
 
-**If a QR won't scan**, it is almost always the *quiet zone* — a QR needs a clear
-white margin of at least four modules on every side. Cropping tight to the black
-edge, or putting the code on a coloured or patterned background, stops readers
-recognising it. The generated QR leaves the correct margin; if you supply your own
-image, keep its white border intact.
+To swap the QR later, replace the file, or put the link the QR contains into
+`benefit.qrData` and the page will draw the code itself as vector.
 
 ## Publish it
 

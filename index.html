@@ -6,10 +6,12 @@
 <title>Lioness Prime Course — Enrollment</title>
 <meta name="description" content="Lioness Prime Course — enroll in minutes. Pay securely with PayPal or Benefit Pay, get an instant shared reference number and an invoice for your course.">
 <meta name="theme-color" content="#3E1A63">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/logo-320.png">
 <meta property="og:title" content="Lioness Prime Course">
 <meta property="og:description" content="Enroll in the Lioness Prime Course. PayPal or Benefit Pay, instant reference number, instant invoice.">
 <meta property="og:type" content="website">
+<meta property="og:image" content="assets/logo-320.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -62,7 +64,8 @@ header.site{
 }
 .bar{display:flex; align-items:center; gap:14px; height:70px}
 .brand{display:flex; align-items:center; gap:11px; text-decoration:none; color:inherit; margin-right:auto}
-.brand img{width:38px; height:40px; display:block; filter:drop-shadow(0 2px 6px rgba(201,162,39,.35))}
+.brand img{width:42px; height:42px; display:block; object-fit:contain;
+  filter:drop-shadow(0 2px 7px rgba(201,162,39,.38))}
 .brand b{font-family:'Playfair Display',serif; font-size:19px; font-weight:600; letter-spacing:.01em; line-height:1}
 .brand small{display:block; font-size:10px; letter-spacing:.26em; text-transform:uppercase; color:var(--muted); margin-top:3px}
 .bar nav{display:flex; gap:22px; align-items:center}
@@ -108,7 +111,8 @@ header.site{
 .price-card::before{content:""; position:absolute; inset:-1px; border-radius:24px; padding:1px;
   background:var(--gold-grad); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; opacity:.55}
-.price-card .seal{width:56px; height:60px; margin:0 auto 12px; display:block}
+.price-card .seal{width:76px; height:76px; margin:0 auto 10px; display:block; object-fit:contain;
+  filter:drop-shadow(0 4px 12px rgba(201,162,39,.32))}
 .price-card h3{font-size:22px; margin-bottom:4px}
 .price-card .sub{font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
 .amount{display:flex; align-items:baseline; justify-content:center; gap:8px; margin:18px 0 4px}
@@ -250,7 +254,7 @@ section{padding:74px 0}
 .modal-body .rowline .v{font-weight:500; text-align:right; word-break:break-word}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.05em}
 
-.qr-frame{position:relative; width:238px; max-width:100%; margin:4px auto 16px; padding:14px;
+.qr-frame{position:relative; width:258px; max-width:100%; margin:4px auto 16px; padding:26px;
   background:#fff; border-radius:20px; border:1px solid var(--purple-line); box-shadow:var(--shadow-m)}
 .qr-frame::before{content:""; position:absolute; inset:-1px; border-radius:20px; padding:1px;
   background:var(--gold-grad); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
@@ -271,7 +275,7 @@ section{padding:74px 0}
 .inv-head{display:flex; flex-wrap:wrap; gap:16px; justify-content:space-between; align-items:flex-start;
   padding:24px; background:linear-gradient(135deg,#FCFAFF,#F6F1FC); border-bottom:2px solid transparent;
   border-image:var(--gold-grad) 1}
-.inv-head img{width:44px; height:47px}
+.inv-head img{width:50px; height:50px; object-fit:contain}
 .inv-head .co{display:flex; gap:12px; align-items:center}
 .inv-head .co b{font-family:'Playfair Display',serif; font-size:19px; display:block}
 .inv-head .co small{font-size:10.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted)}
@@ -305,6 +309,7 @@ table.items td small{display:block; color:var(--muted); font-size:12.6px; margin
 .done-hero .ring{width:64px; height:64px; margin:0 auto 14px; border-radius:50%; display:grid; place-items:center;
   background:var(--gold-wash); border:1px solid #EFE0AE}
 .done-hero .ring svg{width:28px; height:28px; color:var(--gold-deep)}
+.brandmark{image-rendering:auto}
 .done-hero h3{font-size:25px; margin-bottom:8px}
 .mail-status{display:inline-flex; align-items:center; gap:9px; margin-top:16px; padding:10px 18px;
   border-radius:999px; font-size:13.6px; border:1px solid var(--line); background:#fff; color:var(--ink-soft)}
@@ -350,7 +355,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
 <header class="site">
   <div class="wrap bar">
     <a class="brand" href="#top">
-      <img src="assets/logo.svg" alt="">
+      <img class="brandmark" src="assets/logo-320.png" alt="">
       <span><b>Lioness Prime</b><small>Course</small></span>
     </a>
     <nav>
@@ -370,7 +375,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
       <div>
         <span class="eyebrow">Limited enrollment</span>
         <h1>The <em class="gold-text">Lioness Prime</em> Course</h1>
-        <p class="lede" id="heroLede">A complete self-paced subscription for women who are done playing small — confidence, presence and personal power, taught step by step and delivered straight to you.</p>
+        <p class="lede" id="heroLede">A self-paced course in the skills of appreciating visual beauty — learning to see what makes something beautiful, and how to bring that eye to everything you create and carry.</p>
         <div class="hero-cta">
           <a href="#enroll" class="btn btn-gold">Join the course</a>
           <a href="#included" class="btn btn-ghost">See what's inside</a>
@@ -384,7 +389,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
       </div>
 
       <aside class="price-card">
-        <img class="seal" src="assets/logo.svg" alt="">
+        <img class="seal brandmark" src="assets/logo-320.png" alt="">
         <h3>Course Subscription</h3>
         <div class="sub" id="accessLabel">Full access</div>
         <div class="amount"><span class="cur" id="priceCurMain" style="font-size:26px">$</span><span class="num" id="priceMain">—</span></div>
@@ -644,7 +649,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
           <div class="invoice" id="invoice">
             <div class="inv-head">
               <div class="co">
-                <img src="assets/logo.svg" alt="">
+                <img class="brandmark" src="assets/logo-320.png" alt="">
                 <span><b>Lioness Prime</b><small>Course</small></span>
               </div>
               <div class="inv-meta">
@@ -744,7 +749,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
 <footer class="site">
   <div class="wrap fgrid">
     <a class="brand" href="#top" style="text-decoration:none">
-      <img src="assets/logo.svg" alt="">
+      <img class="brandmark" src="assets/logo-320.png" alt="">
       <span><b>Lioness Prime</b><small>Course</small></span>
     </a>
     <div style="font-size:14px">Payments by <b style="color:#fff">PayPal</b> &amp; <b style="color:#fff">Benefit Pay</b></div>
@@ -763,13 +768,9 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.12); margin
 const CONFIG = {
   brand:  'Lioness Prime',
 
-  // ---- LOGO ----------------------------------------------------------------
-  // Drop your own logo in assets/ under any of these names and the page uses it
-  // as-is, everywhere. If none is found, the built-in gold vector mark is used.
-  logoFiles: ['assets/logo.png', 'assets/logo.webp', 'assets/logo.jpg'],
 
   course: 'Lioness Prime Course — Subscription',
-  courseNote: 'Full course access, private members group, workbooks and all future updates.',
+  courseNote: 'A course in the skills of appreciating visual beauty — training the eye, the taste and the confidence to recognise it, create it and carry it.',
   accessLabel: 'Full access · one payment',
 
   // ---- PRICE ---------------------------------------------------------------
@@ -788,7 +789,7 @@ const CONFIG = {
   benefit: {
     currency: 'BHD',
     // 1) Preferred: drop your QR image at this path and it is used as-is.
-    qrImage: 'assets/benefit-qr.png',
+    qrImage: 'assets/benefit-qr.jpg',
     // 2) Fallback: if the image above is missing, put your Benefit Pay link
     //    here and a crisp QR is generated live from it.
     qrData: '',
@@ -803,16 +804,20 @@ const CONFIG = {
   // No mail server, no domain, no noreply@ address: EmailJS sends through your
   // own Gmail. Free for 200 emails a month. Setup steps are in README.md.
   email: {
-    provider: 'emailjs',
-    publicKey:  '',   // EmailJS → Account → Public Key
-    serviceId:  '',   // EmailJS → Email Services → Service ID
-    templateId: '',   // EmailJS → Email Templates → Template ID
-    merchantCopy: 'angel.lionness@gmail.com'   // always copied on every invoice
+    // 'wordpress' sends through prime.aasaad.com itself (WP Mail SMTP), so the
+    // invoice arrives from your own address with no third-party mail service.
+    // Install wordpress/lioness-invoice-mailer.php on the site first — see README.
+    provider: 'wordpress',                                            // 'wordpress' | 'emailjs' | 'off'
+    endpoint: 'https://prime.aasaad.com/wp-json/lioness/v1/invoice',
+    merchantCopy: 'hi@prime.aasaad.com',   // shown to the buyer; the plugin sets the real copy list
+
+    // Only needed if provider is switched to 'emailjs'.
+    publicKey: '', serviceId: '', templateId: ''
   },
 
   // ---- WHERE ENROLLMENTS ARE SENT -----------------------------------------
   merchant: {
-    email: 'angel.lionness@gmail.com',   // used by the manual "send my details" button
+    email: 'hi@prime.aasaad.com',   // used by the manual "send my details" button
     whatsapp: '',         // digits only, e.g. '97333000000' → enables the WhatsApp button
     snapchat: ''          // e.g. 'lionessprime'
   }
@@ -1105,7 +1110,7 @@ function mountQR() {
   };
   const missing = () => {
     slot.innerHTML = `<b style="color:var(--purple-deep);font-size:13.5px">QR code not set up yet</b>
-      <span>Add your Benefit Pay QR as <span class="mono">assets/benefit-qr.png</span>, or put your Benefit Pay link in <span class="mono">CONFIG.benefit.qrData</span>.</span>`;
+      <span>Add your Benefit Pay QR as <span class="mono">assets/benefit-qr.jpg</span>, or put your Benefit Pay link in <span class="mono">CONFIG.benefit.qrData</span>.</span>`;
   };
   const generate = () => {
     const make = () => {
@@ -1187,7 +1192,10 @@ function invoiceText() {
 /* ---------- emailing the invoice (buyer + merchant copy) ---------- */
 function emailReady() {
   const e = CONFIG.email;
-  return e && e.provider === 'emailjs' && e.publicKey && e.serviceId && e.templateId;
+  if (!e) return false;
+  if (e.provider === 'wordpress') return !!e.endpoint;
+  if (e.provider === 'emailjs')   return !!(e.publicKey && e.serviceId && e.templateId);
+  return false;
 }
 
 function mailStatus(kind, msg) {
@@ -1232,6 +1240,8 @@ function emailParams() {
     invoice_no:    'INV-' + state.ref.replace(/^LP-/, ''),
     invoice_date:  d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     course:        CONFIG.course,
+    course_note:   CONFIG.courseNote,
+    website:       '',                       // honeypot: real visitors never fill this
     amount:        invoiceAmount(),
     method:        state.method || '—',
     transaction:   state.txn || '—',
@@ -1243,8 +1253,18 @@ async function sendInvoiceEmail(manual) {
   if (!emailReady()) { mailStatus(null); return; }
   mailStatus('sending', 'Emailing your invoice…');
   try {
-    const ejs = await loadEmailJS();
-    await ejs.send(CONFIG.email.serviceId, CONFIG.email.templateId, emailParams());
+    if (CONFIG.email.provider === 'wordpress') {
+      const res = await fetch(CONFIG.email.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailParams())
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || ('HTTP ' + res.status));
+    } else {
+      const ejs = await loadEmailJS();
+      await ejs.send(CONFIG.email.serviceId, CONFIG.email.templateId, emailParams());
+    }
     state.emailed = true; save();
     mailStatus('sent', `Invoice emailed to ${state.email} — a copy went to ${CONFIG.brand}.`);
     if (manual) toast('Invoice sent');
@@ -1272,26 +1292,6 @@ function sendInvoice() {
 }
 
 /* ---------- boot ---------- */
-/* Swap in the supplied logo artwork if any of CONFIG.logoFiles resolves. */
-function mountLogo() {
-  const slots = $$('img[src$="logo.svg"]');
-  if (!slots.length) return;
-  const tryNext = i => {
-    if (i >= CONFIG.logoFiles.length) return;          // keep the vector mark
-    const src = CONFIG.logoFiles[i];
-    const probe = new Image();
-    probe.onload = () => slots.forEach(el => {
-      el.src = src;
-      el.style.objectFit = 'contain';
-      el.style.width = 'auto';
-      el.style.maxHeight = getComputedStyle(el).height;
-    });
-    probe.onerror = () => tryNext(i + 1);
-    probe.src = src;
-  };
-  tryNext(0);
-}
-
 function paintStatic() {
   $('#resendEmail').hidden = !emailReady();
   $('#priceMain').textContent    = CONFIG.price.usd.toFixed(0);
@@ -1355,7 +1355,6 @@ function restore() {
 }
 
 paintStatic();
-mountLogo();
 wire();
 restore();
 </script>
