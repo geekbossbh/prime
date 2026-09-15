@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.1.2.
+ * Lioness Prime — core, version 2.1.3.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.1.2' );
+define( 'LIONESS_VERSION', '2.1.3' );
+
+/**
+ * The plugin's own directory and URL.
+ *
+ * This file lives in core/, so __FILE__ points one level too deep — these are
+ * resolved from the parent so the page and its images are found wherever the
+ * core sits.
+ */
+define( 'LIONESS_DIR', trailingslashit( dirname( __DIR__ ) ) );
+define( 'LIONESS_URL', trailingslashit( plugins_url( '', dirname( __DIR__ ) . '/lioness-prime.php' ) ) );
 
 /* -------------------------------------------------------------------------
  * Settings. Override any of these in wp-config.php.
@@ -229,7 +239,7 @@ add_action( 'template_redirect', function () {
 		return;
 	}
 
-	$file = plugin_dir_path( __FILE__ ) . 'page/index.html';
+	$file = LIONESS_DIR . 'page/index.html';
 	if ( ! is_readable( $file ) ) {
 		return;   // fall through to the theme rather than showing a blank page
 	}
@@ -239,7 +249,7 @@ add_action( 'template_redirect', function () {
 	}
 
 	// The page refers to its images relatively; point them at the plugin folder.
-	$base = plugin_dir_url( __FILE__ ) . 'page/';
+	$base = LIONESS_URL . 'page/';
 	$html = str_replace( array( '"assets/', "'assets/" ), array( '"' . $base . 'assets/', "'" . $base . 'assets/' ), $html );
 
 	// Keep the displayed price and the invoiced price the same figure.
