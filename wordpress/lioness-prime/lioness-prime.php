@@ -5,7 +5,7 @@
  *              buyer and to Lioness Prime when a payment is confirmed, and records every
  *              enrollment under Enrollments in the admin. Payment screenshots are kept out
  *              of the media library and served only to signed-in staff.
- * Version:     2.0.0
+ * Version:     2.1.1
  * Author:      Lioness Prime
  * License:     GPL-2.0-or-later
  */
@@ -107,10 +107,12 @@ if ( ! defined( 'LIONESS_DISABLE_XMLRPC' ) ) {
 
 /**
  * Refuse an oversized enrollment before WordPress reads or decodes the body.
- * Runs on muplugins_loaded, the earliest hook available to a normal plugin, so a
- * multi-megabyte POST costs a header check rather than a JSON parse.
+ *
+ * Deliberately called at file scope rather than hooked: a plugin in plugins/ is
+ * loaded after muplugins_loaded has already fired, so hooking it there would
+ * never run. Being included is the earliest a normal plugin can act.
  */
-add_action( 'muplugins_loaded', function () {
+function lioness_guard_request_size() {
 	if ( empty( $_SERVER['REQUEST_METHOD'] ) || 'POST' !== strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) ) {
 		return;
 	}
@@ -120,12 +122,13 @@ add_action( 'muplugins_loaded', function () {
 	}
 	$length = isset( $_SERVER['CONTENT_LENGTH'] ) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
 	if ( $length > LIONESS_MAX_REQUEST_KB * 1024 ) {
-		status_header( 413 );
+		header( 'HTTP/1.1 413 Payload Too Large' );
 		header( 'Content-Type: application/json; charset=UTF-8' );
-		echo wp_json_encode( array( 'ok' => false, 'error' => 'too_large' ) );
+		echo '{"ok":false,"error":"too_large"}';
 		exit;
 	}
-}, 0 );
+}
+lioness_guard_request_size();
 
 /* -------------------------------------------------------------------------
  * Login throttling
@@ -260,6 +263,7 @@ add_action( 'template_redirect', function () {
 	header( 'Last-Modified: ' . gmdate( 'D, d M Y H:i:s', $stamp ) . ' GMT' );
 	header( 'Cache-Control: public, max-age=300' );
 	header( 'Content-Type: text/html; charset=UTF-8' );
+	header( 'X-Lioness: 2.1.1' );   // so the running version can be checked from outside
 	header( 'X-Content-Type-Options: nosniff' );
 	header( 'X-Frame-Options: SAMEORIGIN' );          // no framing the payment page
 	header( 'Referrer-Policy: strict-origin-when-cross-origin' );
