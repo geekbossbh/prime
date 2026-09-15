@@ -620,11 +620,10 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
           </div>
 
           <div class="inv-actions no-print">
-            <button type="button" class="btn btn-ghost btn-sm" id="printInvoice">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
-              Print / save as PDF
+            <button type="button" class="btn btn-ghost btn-sm" id="resendEmail" hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+              Send invoice again
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="resendEmail" hidden>Email it again</button>
           </div>
         </div>
       </div>
@@ -1350,7 +1349,6 @@ function wire() {
   $('#openBenefit').addEventListener('click', benefitModal);
 
   $('#resendEmail').addEventListener('click', () => sendInvoiceEmail(true));
-  $('#printInvoice').addEventListener('click', () => window.print());
 }
 
 function restore() {
