@@ -79,6 +79,54 @@ are untouched. To stop the plugin taking over the front page and keep only
 To update the page later: edit `index.html`, run `./build-plugin.sh`, and upload the
 new zip over the old plugin (WordPress asks you to confirm replacing it).
 
+## Updating without uploading anything
+
+Run `./publish.sh`, then commit and push. The live site polls
+`dist/update.json` hourly and whenever an admin page is opened, and installs
+anything newer than what it is running — checksum-verified, and only after the
+package has been opened and checked for the files it must contain.
+
+To release a change:
+
+1. Edit `index.html`, or the core in `wordpress/lioness-prime/core/`.
+2. Rename the core file to the next version and bump `LIONESS_VERSION` inside it.
+3. `./publish.sh`, then commit and push.
+
+`curl -I https://prime.aasaad.com/course` reports the running version in an
+`X-Lioness` header, so what is live is never a guess.
+
+Most changes need no release at all. Prices, course wording, the PayPal link,
+the addresses invoices go to, the logo, the QR and whether a screenshot is
+required are all on **Enrollments → Settings**.
+
+### What happens when something goes wrong
+
+- **A bad release.** The package is opened before installation and rejected
+  unless it holds a plugin file, a core file and a page of plausible size. A
+  release that would have left the site blank is refused and the site carries on
+  as it was.
+- **A failed update.** Recorded and shown as an admin notice with the reason.
+  WordPress deactivates a plugin while upgrading it and waits for a browser to
+  switch it back on; nothing here is a browser, so the plugin restores its own
+  active state afterwards.
+- **The update server unreachable.** Checks back off for fifteen minutes and the
+  site carries on. Updates are never required for the site to work.
+- **The page file missing.** The request falls through to the theme rather than
+  erroring, and an admin notice says exactly which file is missing — that
+  failure is otherwise invisible, and it has happened.
+- **Mail not leaving the server.** The enrollment is recorded first, so it is
+  never lost to a mail failure, the buyer is told plainly, and the Enrollments
+  list marks that row **failed** with the reason.
+- **Screenshots unsaveable.** The enrollment is still recorded and emailed, and
+  an admin notice explains why the image is missing.
+
+## Testing
+
+`/tmp/wp` in the development session runs a real WordPress on SQLite with this
+plugin installed, which is how the page, the settings, the security limits and
+the updater are exercised before anything ships. Syntax checks alone let two
+broken releases through; loading an actual page does not.
+
 ## Why the plugin is split in two
 
 `lioness-prime.php` holds no logic beyond finding and loading the newest

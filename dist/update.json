@@ -1,0 +1,8 @@
+{
+  "version": "2.2.0",
+  "package": "https://raw.githubusercontent.com/geekbossbh/prime/refs/heads/claude/affectionate-bell-7uot8x/dist/lioness-prime.zip",
+  "sha256": "44e1ccf525b7aa1711b91e94ba24ce302a2db4f923bffe689df344bdd1ca4836",
+  "url": "https://github.com/geekbossbh/prime",
+  "requires_php": "7.4",
+  "tested": "6.9"
+}

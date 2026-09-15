@@ -305,6 +305,17 @@ table.items td small{display:block; color:var(--muted); font-size:13px; margin-t
 .mail-status.failed{border-color:var(--gold-line); color:#6A5417; background:var(--gold-wash)}
 .mail-status .spin{width:12px; height:12px; border-radius:50%; border:1.5px solid var(--purple-line);
   border-top-color:var(--purple); animation:spin .8s linear infinite}
+.btn .spin{width:13px; height:13px; border-radius:50%; border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff; animation:spin .7s linear infinite; flex:0 0 13px}
+.btn-ghost .spin{border-color:var(--line); border-top-color:var(--purple)}
+.btn[data-busy="1"]{opacity:.75; cursor:progress}
+.qr-frame .skeleton{aspect-ratio:1; display:grid; place-items:center; gap:10px; background:var(--cream);
+  border:1px solid var(--line); color:var(--muted); font-size:12.6px; text-align:center; padding:18px}
+.qr-frame .skeleton .spin{width:20px; height:20px; border-radius:50%; border:2px solid var(--line);
+  border-top-color:var(--gold); animation:spin .8s linear infinite}
+.proof-preview.working{color:var(--muted)}
+.proof-preview .spin{width:18px; height:18px; border-radius:50%; border:2px solid var(--line);
+  border-top-color:var(--purple); animation:spin .8s linear infinite; flex:0 0 18px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* faq + footer */
@@ -785,6 +796,35 @@ function makeRef() {
   return `LP-${ym}-${pick(4)}`;
 }
 
+/* ---------- busy states ----------
+   Every action that takes a moment says so. A button that looks unchanged after
+   a tap gets tapped again, and on a payment page that is the worst moment for
+   somebody to start guessing. */
+const SPIN = '<span class="spin" aria-hidden="true"></span>';
+
+function busy(el, label) {
+  if (!el) return () => {};
+  const html = el.innerHTML, wasDisabled = el.disabled;
+  el.dataset.busy = '1';
+  el.disabled = true;
+  el.innerHTML = SPIN + (label || 'Working…');
+  el.setAttribute('aria-busy', 'true');
+  return () => {
+    el.innerHTML = html;
+    el.disabled = wasDisabled;
+    el.removeAttribute('aria-busy');
+    delete el.dataset.busy;
+  };
+}
+
+/* Nothing waits forever: a request that stalls is reported, not left spinning. */
+function fetchWithTimeout(url, options, ms = 20000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...options, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 /* ---------- toast ---------- */
 let toastT;
 function toast(msg) {
@@ -930,7 +970,17 @@ async function acceptProof(file) {
     return fail(`That image is ${prettyBytes(file.size)}. Please keep it under ${CONFIG.proof.maxMB} MB.`);
   }
   if (field) field.classList.remove('bad');
+
+  const box = $('#proofPreview'), drop = $('#proofDrop');
+  if (box) {
+    box.hidden = false;
+    box.classList.add('working');
+    box.innerHTML = `${SPIN}<div class="meta"><b>Preparing your screenshot…</b><span>${prettyBytes(file.size)}</span></div>`;
+  }
+  if (drop) drop.hidden = true;
+
   const shrunk = await shrinkImage(file, CONFIG.proof.maxDimension, 0.82);
+  if (box) box.classList.remove('working');
   if (!shrunk) return fail("That image couldn't be read. Try a different screenshot.");
   proof = {
     dataUrl: shrunk.dataUrl,
@@ -1036,9 +1086,10 @@ function confirmView(method) {
     state.emailed = false;
     state.proofName = proof ? proof.name : '';
     state.proofSize = proof ? proof.bytes : 0;
-    e.currentTarget.dataset.busy = '1';
-    save(); closeModal(); buildInvoice(); goStep(3);
-    sendInvoiceEmail(false);
+    busy(e.currentTarget, 'Recording your payment…');
+    save();
+    // let the button paint before the modal closes
+    setTimeout(() => { closeModal(); buildInvoice(); goStep(3); sendInvoiceEmail(false); }, 120);
   });
 }
 
@@ -1082,7 +1133,9 @@ function paypalModal() {
       </p>
     </div>`);
 
-  $('#ppGo').addEventListener('click', () => {
+  $('#ppGo').addEventListener('click', e => {
+    const release = busy(e.currentTarget, 'Opening PayPal…');
+    setTimeout(release, 2500);
     armReference();
     const w = 480, h = 760;
     const x = Math.max(0, (screen.width - w) / 2), y = Math.max(0, (screen.height - h) / 2);
@@ -1115,9 +1168,9 @@ function benefitModal() {
       <button class="modal-x" data-close aria-label="Close">×</button>
     </div>
     <div class="modal-body">
-      <div class="qr-frame"><div class="qr-fallback" id="qrSlot">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/></svg>
-        Loading QR code…
+      <div class="qr-frame"><div class="skeleton" id="qrSlot">
+        <span class="spin" aria-hidden="true"></span>
+        Loading the QR code…
       </div></div>
       <div class="rowline"><span class="k">Amount</span><span class="v">${BHD()}</span></div>
       ${refRow()}
@@ -1320,18 +1373,36 @@ async function sendInvoiceEmail(manual) {
     return;
   }
   sending = true; lastSend = Date.now();
-  const btn = $('#resendEmail');
-  if (btn) btn.disabled = true;
+  const done = busy($('#resendEmail'), 'Sending…');
   mailStatus('sending', 'Emailing your invoice…');
   try {
     if (CONFIG.email.provider === 'wordpress') {
-      const res = await fetch(CONFIG.email.endpoint, {
+      const post = () => fetchWithTimeout(CONFIG.email.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(emailParams())
-      });
+      }, 25000);
+
+      let res;
+      try {
+        res = await post();
+      } catch (netErr) {
+        // One retry: a dropped mobile connection is the common case, and the
+        // buyer has already paid by this point.
+        mailStatus('sending', 'Connection dropped — trying once more…');
+        await new Promise(r => setTimeout(r, 1500));
+        res = await post();
+      }
       const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.ok) throw new Error(body.error || ('HTTP ' + res.status));
+      if (!res.ok || !body.ok) {
+        const known = {
+          rate_limited: 'Too many attempts from this connection. Wait a few minutes and use "Send invoice".',
+          too_fast:     'That was a moment too quick — try "Send invoice" again shortly.',
+          too_large:    'Your screenshot was too large to send. The enrollment is still recorded.',
+          busy:         'The site is busy. Your enrollment is recorded — use "Send invoice" in a minute.'
+        };
+        throw new Error(known[body.error] || body.error || ('HTTP ' + res.status));
+      }
     } else {
       const ejs = await loadEmailJS();
       await ejs.send(CONFIG.email.serviceId, CONFIG.email.templateId, emailParams());
@@ -1340,12 +1411,13 @@ async function sendInvoiceEmail(manual) {
     mailStatus('sent', `Invoice emailed to ${state.email} — a copy went to ${CONFIG.brand}.`);
     if (manual) toast('Invoice sent');
   } catch (err) {
-    mailStatus('failed',
-      "We couldn't email it automatically — please save a copy of the invoice below.");
+    const why = (err && err.message) ? err.message : '';
+    mailStatus('failed', why && why.indexOf('HTTP') !== 0
+      ? why
+      : "We couldn't email it automatically — your invoice is below, and it is safely recorded.");
   } finally {
     sending = false;
-    const b = $('#resendEmail');
-    if (b) b.disabled = false;
+    done();
   }
 }
 
@@ -1403,10 +1475,11 @@ function wire() {
   $('#detailsForm').addEventListener('submit', e => {
     e.preventDefault();
     if (e.target.dataset.busy === '1') return;
-    e.target.dataset.busy = '1';
-    setTimeout(() => { e.target.dataset.busy = ''; }, 600);
     const v = validate();
     if (!v) { const bad = $('.field.bad input'); if (bad) bad.focus(); return; }
+    e.target.dataset.busy = '1';
+    const release = busy(e.target.querySelector('button[type="submit"]'), 'One moment…');
+    setTimeout(() => { e.target.dataset.busy = ''; release(); }, 450);
     Object.assign(state, v);
     if (!state.ref) { state.ref = makeRef(); state.createdAt = new Date().toISOString(); }
     save(); paintStep2(); goStep(2);

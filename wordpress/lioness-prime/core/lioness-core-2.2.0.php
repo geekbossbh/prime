@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.1.3.
+ * Lioness Prime — core, version 2.2.0.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.1.3' );
+define( 'LIONESS_VERSION', '2.2.0' );
 
 /**
  * The plugin's own directory and URL.
@@ -59,6 +59,12 @@ if ( ! defined( 'LIONESS_PRICE_BHD' ) ) {
 }
 if ( ! defined( 'LIONESS_COURSE_NAME' ) ) {
 	define( 'LIONESS_COURSE_NAME', 'Lioness Prime Course — Subscription' );
+}
+
+/** Where the plugin looks for its own updates. */
+if ( ! defined( 'LIONESS_UPDATE_MANIFEST' ) ) {
+	define( 'LIONESS_UPDATE_MANIFEST',
+		'https://raw.githubusercontent.com/geekbossbh/prime/refs/heads/claude/affectionate-bell-7uot8x/dist/update.json' );
 }
 
 /** Largest payment screenshot accepted, in megabytes. */
@@ -112,6 +118,36 @@ if ( ! defined( 'LIONESS_HARDEN_REST' ) ) {
 if ( ! defined( 'LIONESS_DISABLE_XMLRPC' ) ) {
 	define( 'LIONESS_DISABLE_XMLRPC', true );
 }
+
+/* -------------------------------------------------------------------------
+ * Settings
+ *
+ * Every constant above is a fallback. Anything set on the settings screen wins,
+ * so prices, addresses and course wording can change without touching a file.
+ * An empty setting falls back rather than blanking the site.
+ * ---------------------------------------------------------------------- */
+
+function lioness_opt( $key, $fallback = '' ) {
+	$saved = get_option( 'lioness_settings', array() );
+	if ( ! is_array( $saved ) || ! isset( $saved[ $key ] ) ) {
+		return $fallback;
+	}
+	$value = is_string( $saved[ $key ] ) ? trim( $saved[ $key ] ) : $saved[ $key ];
+	return ( '' === $value ) ? $fallback : $value;
+}
+
+function lioness_price_usd()      { return (string) lioness_opt( 'price_usd', LIONESS_PRICE_USD ); }
+function lioness_price_bhd()      { return (string) lioness_opt( 'price_bhd', LIONESS_PRICE_BHD ); }
+function lioness_course_name()    { return (string) lioness_opt( 'course_name', LIONESS_COURSE_NAME ); }
+function lioness_course_note()    { return (string) lioness_opt( 'course_note', '' ); }
+function lioness_merchant_email() { return (string) lioness_opt( 'merchant_email', LIONESS_MERCHANT_EMAIL ); }
+function lioness_copy_email()     { return (string) lioness_opt( 'copy_email', LIONESS_INVOICE_COPY ); }
+function lioness_from_email()     { return (string) lioness_opt( 'from_email', LIONESS_FROM_EMAIL ); }
+function lioness_paypal_link()    { return (string) lioness_opt( 'paypal_link', '' ); }
+function lioness_logo_url()       { return (string) lioness_opt( 'logo_url', '' ); }
+function lioness_qr_url()         { return (string) lioness_opt( 'qr_url', '' ); }
+function lioness_proof_required() { return '0' !== (string) lioness_opt( 'proof_required', '1' ); }
+function lioness_auto_update()    { return '0' !== (string) lioness_opt( 'auto_update', '1' ); }
 
 /* -------------------------------------------------------------------------
  * Site hardening
@@ -252,15 +288,14 @@ add_action( 'template_redirect', function () {
 	$base = LIONESS_URL . 'page/';
 	$html = str_replace( array( '"assets/', "'assets/" ), array( '"' . $base . 'assets/', "'" . $base . 'assets/' ), $html );
 
-	// Keep the displayed price and the invoiced price the same figure.
-	$html = preg_replace( '/(\busd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . LIONESS_PRICE_USD, $html, 1 );
-	$html = preg_replace( '/(\bbhd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . LIONESS_PRICE_BHD, $html, 1 );
+	$html = lioness_apply_settings_to_page( $html, $base );
 
 	// The page is the same for everyone, so let caches and browsers keep it.
 	// Under a flood the cheapest request is the one that never reaches PHP, and
 	// the next cheapest is a 304.
 	$stamp = (int) filemtime( $file );
-	$etag  = '"lp-' . md5( $stamp . '|' . strlen( $html ) . '|' . LIONESS_PRICE_USD . '|' . LIONESS_PRICE_BHD ) . '"';
+	$etag  = '"lp-' . md5( $stamp . '|' . strlen( $html ) . '|' . LIONESS_VERSION . '|'
+		. wp_json_encode( get_option( 'lioness_settings', array() ) ) ) . '"';
 
 	$since = isset( $_SERVER['HTTP_IF_NONE_MATCH'] ) ? trim( (string) $_SERVER['HTTP_IF_NONE_MATCH'] ) : '';
 	if ( '' !== $since && false !== strpos( $since, trim( $etag, '"' ) ) ) {
@@ -299,6 +334,54 @@ add_action( 'template_redirect', function () {
 	echo $html; // phpcs:ignore WordPress.Security.EscapeOutput -- a whole HTML document, shipped with the plugin
 	exit;
 }, 0 );
+
+/**
+ * Writes the current settings into the page as it is served.
+ *
+ * Everything a shop owner is likely to want changed — the price, the course
+ * wording, the PayPal link, the logo, the QR — is replaced here rather than
+ * baked into the file, so changing any of it is a form submission and not a
+ * re-upload. Each replacement is independent: if a pattern ever stops matching,
+ * that one value keeps whatever the page shipped with and the rest still apply.
+ */
+function lioness_apply_settings_to_page( $html, $base ) {
+	// Keep the displayed price and the invoiced price the same figure.
+	$html = preg_replace( '/(\busd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . lioness_price_usd(), $html, 1 );
+	$html = preg_replace( '/(\bbhd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . lioness_price_bhd(), $html, 1 );
+
+	// JSON-encoding gives a correctly quoted and escaped JavaScript string.
+	$html = preg_replace( '/(\bcourse:\s*)\x27(?:[^\x27\\\\]|\\\\.)*\x27/',
+		'${1}' . wp_json_encode( lioness_course_name() ), $html, 1 );
+
+	$note = lioness_course_note();
+	if ( '' !== $note ) {
+		$html = preg_replace( '/(\bcourseNote:\s*)\x27(?:[^\x27\\\\]|\\\\.)*\x27/',
+			'${1}' . wp_json_encode( $note ), $html, 1 );
+	}
+
+	$paypal = lioness_paypal_link();
+	if ( '' !== $paypal ) {
+		$html = str_replace( 'https://www.paypal.com/ncp/payment/2E8SL288SQ56Q', esc_url_raw( $paypal ), $html );
+	}
+
+	if ( ! lioness_proof_required() ) {
+		$html = preg_replace( '/(\brequired:\s*)true/', '${1}false', $html, 1 );
+	}
+
+	// Swapping the artwork for something in the media library.
+	$logo = lioness_logo_url();
+	if ( '' !== $logo ) {
+		$html = str_replace( $base . 'assets/logo-320.png', esc_url_raw( $logo ), $html );
+	}
+	$qr = lioness_qr_url();
+	if ( '' !== $qr ) {
+		$html = str_replace( $base . 'assets/benefit-qr.jpg', esc_url_raw( $qr ), $html );
+	}
+
+	$html = str_replace( 'hi@prime.aasaad.com', esc_html( lioness_merchant_email() ), $html );
+
+	return $html;
+}
 
 /* -------------------------------------------------------------------------
  * Enrollment record
@@ -602,7 +685,7 @@ add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
 	header( 'Access-Control-Allow-Headers: Content-Type' );
 	header( 'Vary: Origin' );
 	return $served;
-}, 10, 3 );
+}, 99, 3 );   // after core's own CORS filter, whose header would otherwise win
 
 function lioness_client_key() {
 	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown';
@@ -662,8 +745,8 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	// sends about the amount or the course is ignored.
 	$method = ( 'PayPal' === $clean( 'method', 40 ) ) ? 'PayPal' : 'Benefit Pay';
 	$amount = ( 'PayPal' === $method )
-		? '$' . LIONESS_PRICE_USD
-		: LIONESS_PRICE_BHD . ' BHD';
+		? '$' . lioness_price_usd()
+		: lioness_price_bhd() . ' BHD';
 
 	$proof_file = lioness_store_proof( (string) $request->get_param( 'proof_base64' ), $ref );
 
@@ -673,7 +756,7 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'snapchat'    => $clean( 'snapchat', 60 ),
 		'reference'   => $ref,
 		'invoice_no'  => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
-		'course'      => LIONESS_COURSE_NAME,
+		'course'      => lioness_course_name(),
 		'course_note' => $clean( 'course_note', 300 ),
 		'amount'      => $amount,
 		'method'      => $method,
@@ -699,21 +782,24 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	}
 
 	$copies = lioness_copy_list();
+	update_option( 'lioness_mailing_enrollment', (int) $post_id, false );
 
 	$sent_buyer = wp_mail(
 		$email,
 		sprintf( 'Your Lioness Prime Course invoice — %s', $data['reference'] ),
 		lioness_invoice_html( $data, false ),
-		lioness_headers( LIONESS_MERCHANT_EMAIL, $copies )
+		lioness_headers( lioness_merchant_email(), $copies )
 	);
 
 	wp_mail(
-		LIONESS_MERCHANT_EMAIL,
+		lioness_merchant_email(),
 		sprintf( 'New enrollment — %s (%s)', $data['name'], $data['reference'] ),
 		lioness_invoice_html( $data, true ),
-		lioness_headers( $email, LIONESS_INVOICE_COPY ),
+		lioness_headers( $email, lioness_copy_email() ),
 		$proof_file ? array( lioness_proof_dir() . '/' . $proof_file ) : array()
 	);
+
+	delete_option( 'lioness_mailing_enrollment' );
 
 	return new WP_REST_Response(
 		array( 'ok' => (bool) $sent_buyer, 'reference' => $data['reference'] ),
@@ -724,7 +810,7 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 function lioness_headers( $reply_to, $bcc = '' ) {
 	$headers = array(
 		'Content-Type: text/html; charset=UTF-8',
-		sprintf( 'From: Lioness Prime <%s>', LIONESS_FROM_EMAIL ),
+		sprintf( 'From: Lioness Prime <%s>', lioness_from_email() ),
 		sprintf( 'Reply-To: %s', $reply_to ),
 	);
 	$bcc = trim( (string) $bcc, " \t," );
@@ -737,8 +823,8 @@ function lioness_headers( $reply_to, $bcc = '' ) {
 /** Both of Lioness Prime's own addresses, as a Bcc list. */
 function lioness_copy_list() {
 	return implode( ', ', array_filter( array_map( 'trim', array(
-		LIONESS_MERCHANT_EMAIL,
-		LIONESS_INVOICE_COPY,
+		lioness_merchant_email(),
+		lioness_copy_email(),
 	) ) ) );
 }
 
@@ -785,4 +871,484 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 		. $row( 'Snapchat', $d['snapchat'] )
 		. '</table>'
 		. '</div></div></div>';
+}
+
+/* -------------------------------------------------------------------------
+ * Updating itself
+ *
+ * The plugin checks a manifest in its own repository and installs newer
+ * versions through WordPress's own upgrader. Because each release carries its
+ * version in the core filename, a server caching compiled PHP cannot go on
+ * running the old code afterwards.
+ *
+ * Turn it off under Enrollments → Settings, or with
+ * define( 'LIONESS_UPDATE_MANIFEST', '' ) in wp-config.php, and updates become
+ * a button in the Plugins screen instead.
+ * ---------------------------------------------------------------------- */
+
+function lioness_basename() {
+	return plugin_basename( LIONESS_DIR . 'lioness-prime.php' );
+}
+
+/** The published manifest, cached so a slow or missing repo cannot slow the site. */
+function lioness_manifest( $force = false ) {
+	if ( '' === (string) LIONESS_UPDATE_MANIFEST ) {
+		return array();
+	}
+	if ( ! $force ) {
+		$cached = get_transient( 'lioness_manifest' );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+	}
+	$res = wp_remote_get( LIONESS_UPDATE_MANIFEST, array(
+		'timeout'    => 10,
+		'user-agent' => 'LionessPrime/' . LIONESS_VERSION,
+	) );
+	if ( is_wp_error( $res ) || 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
+		set_transient( 'lioness_manifest', array(), 15 * MINUTE_IN_SECONDS );   // back off, keep working
+		return array();
+	}
+	$data = json_decode( wp_remote_retrieve_body( $res ), true );
+	if ( ! is_array( $data ) || empty( $data['version'] ) || empty( $data['package'] ) ) {
+		set_transient( 'lioness_manifest', array(), 15 * MINUTE_IN_SECONDS );
+		return array();
+	}
+	// Only ever accept a package from the same host as the manifest.
+	if ( wp_parse_url( $data['package'], PHP_URL_HOST ) !== wp_parse_url( LIONESS_UPDATE_MANIFEST, PHP_URL_HOST ) ) {
+		set_transient( 'lioness_manifest', array(), HOUR_IN_SECONDS );
+		return array();
+	}
+	set_transient( 'lioness_manifest', $data, HOUR_IN_SECONDS );
+	return $data;
+}
+
+function lioness_update_available() {
+	$m = lioness_manifest();
+	return ( ! empty( $m['version'] ) && version_compare( $m['version'], LIONESS_VERSION, '>' ) ) ? $m : array();
+}
+
+add_filter( 'pre_set_site_transient_update_plugins', function ( $transient ) {
+	if ( ! is_object( $transient ) ) {
+		return $transient;
+	}
+	$m = lioness_update_available();
+	if ( empty( $m ) ) {
+		return $transient;
+	}
+	$transient->response[ lioness_basename() ] = (object) array(
+		'slug'         => 'lioness-prime',
+		'plugin'       => lioness_basename(),
+		'new_version'  => $m['version'],
+		'package'      => $m['package'],
+		'url'          => isset( $m['url'] ) ? $m['url'] : '',
+		'tested'       => isset( $m['tested'] ) ? $m['tested'] : '',
+		'requires_php' => isset( $m['requires_php'] ) ? $m['requires_php'] : '7.4',
+		'icons'        => array(),
+		'banners'      => array(),
+	);
+	return $transient;
+} );
+
+/** Let WordPress install it unattended when that is switched on. */
+add_filter( 'auto_update_plugin', function ( $update, $item ) {
+	if ( isset( $item->plugin ) && lioness_basename() === $item->plugin ) {
+		return lioness_auto_update();
+	}
+	return $update;
+}, 10, 2 );
+
+/**
+ * Downloads the package here so its checksum can be checked before WordPress
+ * unpacks anything over a working installation.
+ */
+add_filter( 'upgrader_pre_download', function ( $reply, $package, $upgrader, $hook_extra ) {
+	$m = lioness_manifest();
+	if ( empty( $m['package'] ) || $package !== $m['package'] ) {
+		return $reply;
+	}
+	if ( ! function_exists( 'download_url' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+	}
+	$file = download_url( $package, 60 );
+	if ( is_wp_error( $file ) ) {
+		return $file;
+	}
+	if ( ! empty( $m['sha256'] ) ) {
+		$got = hash_file( 'sha256', $file );
+		if ( ! hash_equals( strtolower( (string) $m['sha256'] ), strtolower( (string) $got ) ) ) {
+			@unlink( $file );
+			return new WP_Error( 'lioness_checksum',
+				'The downloaded update did not match its published checksum, so it was discarded.' );
+		}
+	}
+
+	$complete = lioness_package_is_complete( $file );
+	if ( is_wp_error( $complete ) ) {
+		@unlink( $file );
+		return $complete;
+	}
+	return $file;
+}, 10, 4 );
+
+/**
+ * Looks inside a downloaded package before anything is unpacked over a working
+ * site. A checksum only proves the file arrived intact — it says nothing about
+ * whether what was published was any good. An update that installs cleanly and
+ * leaves the site serving its theme is worse than one that refuses.
+ *
+ * @return true|WP_Error
+ */
+function lioness_package_is_complete( $file ) {
+	if ( ! class_exists( 'ZipArchive' ) ) {
+		return true;   // cannot look; the checksum will have to do
+	}
+	$zip = new ZipArchive();
+	if ( true !== $zip->open( $file ) ) {
+		return new WP_Error( 'lioness_package', 'The update could not be opened as a zip archive.' );
+	}
+
+	$needed = array(
+		'lioness-prime/lioness-prime.php' => 200,    // the loader, with its plugin header
+		'lioness-prime/page/index.html'   => 10000,  // the course page itself
+	);
+	$missing = array();
+	foreach ( $needed as $path => $min_bytes ) {
+		$stat = $zip->statName( $path );
+		if ( ! $stat || (int) $stat['size'] < $min_bytes ) {
+			$missing[] = $path;
+		}
+	}
+
+	$has_core = false;
+	for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+		$name = $zip->getNameIndex( $i );
+		if ( 0 === strpos( $name, 'lioness-prime/core/lioness-core-' ) && '.php' === substr( $name, -4 ) ) {
+			$stat = $zip->statName( $name );
+			if ( $stat && (int) $stat['size'] > 5000 ) {
+				$has_core = true;
+			}
+		}
+	}
+	$zip->close();
+
+	if ( ! $has_core ) {
+		$missing[] = 'lioness-prime/core/lioness-core-*.php';
+	}
+	if ( $missing ) {
+		return new WP_Error( 'lioness_package', sprintf(
+			'The published update looked incomplete, so it was not installed. Missing or empty: %s. The site is untouched.',
+			implode( ', ', $missing )
+		) );
+	}
+	return true;
+}
+
+/** Installs a newer version, touching nothing else on the site. */
+function lioness_run_update() {
+	if ( ! lioness_auto_update() ) {
+		return false;
+	}
+	$m = lioness_manifest( true );
+	if ( empty( $m['version'] ) || version_compare( $m['version'], LIONESS_VERSION, '<=' ) ) {
+		return false;
+	}
+	require_once ABSPATH . 'wp-admin/includes/file.php';
+	require_once ABSPATH . 'wp-admin/includes/misc.php';
+	require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+	$basename   = lioness_basename();
+	$was_active = is_plugin_active( $basename );
+
+	wp_clean_plugins_cache( true );
+	wp_update_plugins();
+
+	$skin     = new Automatic_Upgrader_Skin();
+	$upgrader = new Plugin_Upgrader( $skin );
+	$result   = $upgrader->upgrade( $basename );
+	$ok       = ( true === $result );
+
+	/*
+	 * WordPress switches a plugin off before upgrading it and, outside cron,
+	 * expects a browser to switch it back on. Nothing here is a browser, so an
+	 * update would otherwise leave the site with no course page at all.
+	 *
+	 * The option is written directly rather than calling activate_plugin(),
+	 * which would include the new file on top of the old one already running
+	 * in this request and fail on the redeclared functions. The next request
+	 * loads the new version cleanly.
+	 */
+	if ( $was_active ) {
+		$active = (array) get_option( 'active_plugins', array() );
+		if ( ! in_array( $basename, $active, true ) ) {
+			$active[] = $basename;
+			sort( $active );
+			update_option( 'active_plugins', $active );
+		}
+	}
+
+	$why = '';
+	if ( ! $ok ) {
+		if ( is_wp_error( $result ) ) {
+			$why = $result->get_error_message();
+		} elseif ( method_exists( $skin, 'get_errors' ) && is_wp_error( $skin->get_errors() ) ) {
+			$why = $skin->get_errors()->get_error_message();
+		}
+		if ( '' === $why ) {
+			$why = 'The update was declined and nothing was changed.';
+		}
+	}
+
+	update_option( 'lioness_last_update', array(
+		'at'         => time(),
+		'from'       => LIONESS_VERSION,
+		'to'         => $m['version'],
+		'ok'         => $ok,
+		'reactivated'=> $was_active,
+		'error'      => $why,
+	), false );
+
+	return $ok;
+}
+add_action( 'lioness_cron_update', 'lioness_run_update' );
+
+add_action( 'init', function () {
+	if ( ! wp_next_scheduled( 'lioness_cron_update' ) ) {
+		wp_schedule_event( time() + 300, 'hourly', 'lioness_cron_update' );
+	}
+} );
+
+register_deactivation_hook( LIONESS_DIR . 'lioness-prime.php', function () {
+	wp_clear_scheduled_hook( 'lioness_cron_update' );
+} );
+
+/** Opening the admin also nudges a check, so a fix does not wait on traffic. */
+add_action( 'admin_init', function () {
+	if ( ! current_user_can( 'update_plugins' ) || get_transient( 'lioness_admin_checked' ) ) {
+		return;
+	}
+	set_transient( 'lioness_admin_checked', 1, 10 * MINUTE_IN_SECONDS );
+	if ( lioness_auto_update() && ! empty( lioness_update_available() ) ) {
+		lioness_run_update();
+	}
+} );
+
+/* -------------------------------------------------------------------------
+ * Telling someone when something is wrong
+ *
+ * The page-serving hook fails safe: if it cannot find the page it hands the
+ * request to the theme rather than showing an error. That is right for a
+ * visitor and wrong for the owner, who sees a site that merely looks like it
+ * reverted. Everything that can quietly fail is surfaced here instead.
+ * ---------------------------------------------------------------------- */
+
+function lioness_health() {
+	$page    = LIONESS_DIR . 'page/index.html';
+	$dir     = lioness_proof_dir();
+	$manifest = lioness_manifest();
+
+	return array(
+		'version'      => LIONESS_VERSION,
+		'page_found'   => is_readable( $page ),
+		'page_path'    => $page,
+		'assets_found' => is_readable( LIONESS_DIR . 'page/assets/logo-320.png' ),
+		'proof_writable' => is_dir( $dir ) && is_writable( $dir ),
+		'proof_sealed' => is_readable( $dir . '/.htaccess' ),
+		'gd'           => function_exists( 'imagecreatefromstring' ),
+		'from_email'   => lioness_from_email(),
+		'merchant'     => lioness_merchant_email(),
+		'price'        => '$' . lioness_price_usd() . ' / ' . lioness_price_bhd() . ' BHD',
+		'proof_used'   => size_format( lioness_proof_bytes_used() ),
+		'latest'       => isset( $manifest['version'] ) ? $manifest['version'] : '',
+		'update_ready' => ! empty( lioness_update_available() ),
+		'auto_update'  => lioness_auto_update(),
+		'last_update'  => get_option( 'lioness_last_update', array() ),
+		'enrollments'  => (int) wp_count_posts( 'lp_enrollment' )->publish,
+	);
+}
+
+add_action( 'admin_notices', function () {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	$h = lioness_health();
+
+	if ( ! $h['page_found'] ) {
+		printf(
+			'<div class="notice notice-error"><p><strong>Lioness Prime:</strong> the course page file is missing, so the site is showing your theme instead of the course. Looked for <code>%s</code>. Re-upload the plugin.</p></div>',
+			esc_html( $h['page_path'] )
+		);
+	} elseif ( ! $h['assets_found'] ) {
+		echo '<div class="notice notice-warning"><p><strong>Lioness Prime:</strong> the course page is being served but its images are missing. Re-upload the plugin.</p></div>';
+	}
+
+	if ( ! $h['proof_writable'] ) {
+		echo '<div class="notice notice-error"><p><strong>Lioness Prime:</strong> payment screenshots cannot be saved — the uploads folder is not writable. Enrollments will still be recorded and emailed.</p></div>';
+	}
+
+	$last = $h['last_update'];
+	if ( ! empty( $last['ok'] ) === false && ! empty( $last['error'] ) ) {
+		printf(
+			'<div class="notice notice-warning is-dismissible"><p><strong>Lioness Prime:</strong> an automatic update to %s did not complete — %s. Updating from the Plugins screen will work.</p></div>',
+			esc_html( isset( $last['to'] ) ? $last['to'] : '' ),
+			esc_html( $last['error'] )
+		);
+	}
+} );
+
+/** Flags an enrollment whose email did not leave the building. */
+add_action( 'wp_mail_failed', function ( $error ) {
+	$id = (int) get_option( 'lioness_mailing_enrollment', 0 );
+	if ( $id && is_wp_error( $error ) ) {
+		update_post_meta( $id, 'lp_mail_error', mb_substr( $error->get_error_message(), 0, 300 ) );
+	}
+} );
+
+add_filter( 'manage_lp_enrollment_posts_columns', function ( $cols ) {
+	$cols['lp_mail'] = 'Email';
+	return $cols;
+}, 20 );
+
+add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_id ) {
+	if ( 'lp_mail' !== $col ) {
+		return;
+	}
+	$err = (string) get_post_meta( $post_id, 'lp_mail_error', true );
+	if ( '' === $err ) {
+		echo '<span style="color:#1D6B3F">sent</span>';
+	} else {
+		echo '<span style="color:#B03A4E" title="' . esc_attr( $err ) . '">failed</span>';
+	}
+}, 20, 2 );
+
+/* -------------------------------------------------------------------------
+ * Settings screen
+ * ---------------------------------------------------------------------- */
+
+add_action( 'admin_menu', function () {
+	add_submenu_page(
+		'edit.php?post_type=lp_enrollment',
+		'Lioness Prime settings',
+		'Settings',
+		'manage_options',
+		'lioness-settings',
+		'lioness_settings_page'
+	);
+} );
+
+add_action( 'admin_init', function () {
+	register_setting( 'lioness_settings_group', 'lioness_settings', array(
+		'sanitize_callback' => 'lioness_sanitize_settings',
+		'default'           => array(),
+	) );
+} );
+
+function lioness_sanitize_settings( $input ) {
+	$out = array();
+	$in  = is_array( $input ) ? $input : array();
+
+	// A price must look like a number, or it is ignored and the old one stands.
+	foreach ( array( 'price_usd', 'price_bhd' ) as $k ) {
+		$v = isset( $in[ $k ] ) ? trim( (string) $in[ $k ] ) : '';
+		$out[ $k ] = ( '' === $v || preg_match( '/^[0-9]+(\.[0-9]{1,3})?$/', $v ) ) ? $v : lioness_opt( $k, '' );
+	}
+	foreach ( array( 'merchant_email', 'copy_email', 'from_email' ) as $k ) {
+		$v = isset( $in[ $k ] ) ? sanitize_email( trim( (string) $in[ $k ] ) ) : '';
+		$out[ $k ] = ( '' === $v || is_email( $v ) ) ? $v : lioness_opt( $k, '' );
+	}
+	$out['course_name'] = isset( $in['course_name'] ) ? mb_substr( sanitize_text_field( $in['course_name'] ), 0, 160 ) : '';
+	$out['course_note'] = isset( $in['course_note'] ) ? mb_substr( sanitize_text_field( $in['course_note'] ), 0, 300 ) : '';
+	foreach ( array( 'paypal_link', 'logo_url', 'qr_url' ) as $k ) {
+		$out[ $k ] = isset( $in[ $k ] ) ? esc_url_raw( trim( (string) $in[ $k ] ) ) : '';
+	}
+	$out['proof_required'] = empty( $in['proof_required'] ) ? '0' : '1';
+	$out['auto_update']    = empty( $in['auto_update'] ) ? '0' : '1';
+
+	delete_transient( 'lioness_manifest' );
+	return $out;
+}
+
+function lioness_settings_page() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	$h = lioness_health();
+	$yes = '<span style="color:#1D6B3F">yes</span>';
+	$no  = '<span style="color:#B03A4E;font-weight:600">no</span>';
+	?>
+	<div class="wrap">
+		<h1>Lioness Prime</h1>
+
+		<h2 class="title">Status</h2>
+		<table class="widefat striped" style="max-width:820px">
+			<tbody>
+			<tr><td style="width:240px">Running version</td><td><code><?php echo esc_html( $h['version'] ); ?></code></td></tr>
+			<tr><td>Course page found</td><td><?php echo $h['page_found'] ? $yes : $no . ' — <code>' . esc_html( $h['page_path'] ) . '</code>'; ?></td></tr>
+			<tr><td>Page images found</td><td><?php echo $h['assets_found'] ? $yes : $no; ?></td></tr>
+			<tr><td>Screenshots can be saved</td><td><?php echo $h['proof_writable'] ? $yes : $no; ?></td></tr>
+			<tr><td>Screenshot folder sealed off</td><td><?php echo $h['proof_sealed'] ? $yes : $no; ?></td></tr>
+			<tr><td>Image library (GD) available</td><td><?php echo $h['gd'] ? $yes : $no . ' — uploads are still checked, just not redrawn'; ?></td></tr>
+			<tr><td>Price charged</td><td><?php echo esc_html( $h['price'] ); ?></td></tr>
+			<tr><td>Invoices sent from</td><td><?php echo esc_html( $h['from_email'] ); ?></td></tr>
+			<tr><td>Enrollments recorded</td><td><?php echo (int) $h['enrollments']; ?></td></tr>
+			<tr><td>Screenshots stored</td><td><?php echo esc_html( $h['proof_used'] ); ?></td></tr>
+			<tr><td>Latest published version</td><td>
+				<?php
+				echo $h['latest'] ? esc_html( $h['latest'] ) : '<em>could not reach the update server</em>';
+				echo $h['update_ready'] ? ' — <strong>an update is available</strong>' : ( $h['latest'] ? ' — up to date' : '' );
+				?>
+			</td></tr>
+			</tbody>
+		</table>
+
+		<form method="post" action="options.php" style="margin-top:28px">
+			<?php settings_fields( 'lioness_settings_group' ); ?>
+			<h2 class="title">Settings</h2>
+			<p class="description" style="max-width:640px">Leave a field empty to keep the built-in value. A price that is not a plain number is ignored rather than saved, so the page can never end up showing nothing.</p>
+			<table class="form-table" role="presentation">
+				<tr><th scope="row"><label for="lp_usd">PayPal price (USD)</label></th>
+					<td><input name="lioness_settings[price_usd]" id="lp_usd" type="text" class="regular-text"
+						value="<?php echo esc_attr( lioness_opt( 'price_usd', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_PRICE_USD ); ?>"></td></tr>
+				<tr><th scope="row"><label for="lp_bhd">Benefit Pay price (BHD)</label></th>
+					<td><input name="lioness_settings[price_bhd]" id="lp_bhd" type="text" class="regular-text"
+						value="<?php echo esc_attr( lioness_opt( 'price_bhd', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_PRICE_BHD ); ?>"></td></tr>
+				<tr><th scope="row"><label for="lp_cn">Course name</label></th>
+					<td><input name="lioness_settings[course_name]" id="lp_cn" type="text" class="large-text"
+						value="<?php echo esc_attr( lioness_opt( 'course_name', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_COURSE_NAME ); ?>"></td></tr>
+				<tr><th scope="row"><label for="lp_note">Course description</label></th>
+					<td><textarea name="lioness_settings[course_note]" id="lp_note" rows="3" class="large-text"><?php echo esc_textarea( lioness_opt( 'course_note', '' ) ); ?></textarea>
+					<p class="description">Shown on the page and on every invoice.</p></td></tr>
+				<tr><th scope="row"><label for="lp_pp">PayPal payment link</label></th>
+					<td><input name="lioness_settings[paypal_link]" id="lp_pp" type="url" class="large-text"
+						value="<?php echo esc_attr( lioness_opt( 'paypal_link', '' ) ); ?>" placeholder="https://www.paypal.com/ncp/payment/…"></td></tr>
+				<tr><th scope="row"><label for="lp_me">Enrollments go to</label></th>
+					<td><input name="lioness_settings[merchant_email]" id="lp_me" type="email" class="regular-text"
+						value="<?php echo esc_attr( lioness_opt( 'merchant_email', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_MERCHANT_EMAIL ); ?>"></td></tr>
+				<tr><th scope="row"><label for="lp_ce">Blind copy to</label></th>
+					<td><input name="lioness_settings[copy_email]" id="lp_ce" type="email" class="regular-text"
+						value="<?php echo esc_attr( lioness_opt( 'copy_email', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_INVOICE_COPY ); ?>">
+					<p class="description">Never visible to the buyer.</p></td></tr>
+				<tr><th scope="row"><label for="lp_fe">Send invoices from</label></th>
+					<td><input name="lioness_settings[from_email]" id="lp_fe" type="email" class="regular-text"
+						value="<?php echo esc_attr( lioness_opt( 'from_email', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_FROM_EMAIL ); ?>">
+					<p class="description">Must be an address this site is allowed to send as.</p></td></tr>
+				<tr><th scope="row"><label for="lp_logo">Logo image URL</label></th>
+					<td><input name="lioness_settings[logo_url]" id="lp_logo" type="url" class="large-text"
+						value="<?php echo esc_attr( lioness_opt( 'logo_url', '' ) ); ?>" placeholder="leave empty to use the bundled logo"></td></tr>
+				<tr><th scope="row"><label for="lp_qr">Benefit QR image URL</label></th>
+					<td><input name="lioness_settings[qr_url]" id="lp_qr" type="url" class="large-text"
+						value="<?php echo esc_attr( lioness_opt( 'qr_url', '' ) ); ?>" placeholder="leave empty to use the bundled QR"></td></tr>
+				<tr><th scope="row">Proof of payment</th>
+					<td><label><input type="checkbox" name="lioness_settings[proof_required]" value="1" <?php checked( lioness_proof_required() ); ?>>
+						Require a screenshot before an invoice is issued</label></td></tr>
+				<tr><th scope="row">Updates</th>
+					<td><label><input type="checkbox" name="lioness_settings[auto_update]" value="1" <?php checked( lioness_auto_update() ); ?>>
+						Install new versions automatically</label>
+					<p class="description">When off, updates appear in the Plugins screen for you to approve.</p></td></tr>
+			</table>
+			<?php submit_button(); ?>
+		</form>
+	</div>
+	<?php
 }
