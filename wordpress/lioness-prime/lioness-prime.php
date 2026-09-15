@@ -1,12 +1,11 @@
 <?php
 /**
  * Plugin Name: Lioness Prime — Course Page
- * Description: Serves the Lioness Prime Course enrollment page at the site's front page
- *              and at /course, emails the invoice to the buyer and to Lioness Prime when a
- *              payment is confirmed, and records every enrollment under Enrollments in the
- *              admin menu. Mail goes out through this site (WP Mail SMTP), so no external
- *              mail service is involved.
- * Version:     1.1.0
+ * Description: Serves the Lioness Prime Course enrollment page, emails the invoice to the
+ *              buyer and to Lioness Prime when a payment is confirmed, and records every
+ *              enrollment under Enrollments in the admin. Payment screenshots are kept out
+ *              of the media library and served only to signed-in staff.
+ * Version:     2.0.0
  * Author:      Lioness Prime
  * License:     GPL-2.0-or-later
  */
@@ -15,40 +14,124 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/** Where the merchant copy goes. Comma-separate to copy more than one address. */
+/* -------------------------------------------------------------------------
+ * Settings. Override any of these in wp-config.php.
+ * ---------------------------------------------------------------------- */
+
+/** Primary address for enrollment mail. Comma-separate for more than one. */
 if ( ! defined( 'LIONESS_MERCHANT_EMAIL' ) ) {
 	define( 'LIONESS_MERCHANT_EMAIL', 'hi@prime.aasaad.com' );
 }
-/**
- * The second address that receives everything, alongside LIONESS_MERCHANT_EMAIL.
- * Always sent as Bcc, so a buyer never sees either of Lioness Prime's addresses
- * on their own invoice.
- */
+/** Second address copied on everything, always as Bcc. */
 if ( ! defined( 'LIONESS_INVOICE_COPY' ) ) {
 	define( 'LIONESS_INVOICE_COPY', 'angel.lionness@gmail.com' );
 }
-/** Address the invoice is sent from. Must be on a domain this site may send for. */
+/** Address invoices are sent from. Must be on a domain this site may send for. */
 if ( ! defined( 'LIONESS_FROM_EMAIL' ) ) {
 	define( 'LIONESS_FROM_EMAIL', 'hi@prime.aasaad.com' );
 }
+
+/**
+ * The price, decided here rather than in the page.
+ *
+ * The browser cannot be trusted with what something costs: anyone can edit the
+ * page before submitting. These are the figures that reach the invoice, and the
+ * served page is rewritten to match them, so this file is the only place the
+ * price lives.
+ */
+if ( ! defined( 'LIONESS_PRICE_USD' ) ) {
+	define( 'LIONESS_PRICE_USD', '150.00' );
+}
+if ( ! defined( 'LIONESS_PRICE_BHD' ) ) {
+	define( 'LIONESS_PRICE_BHD', '50' );
+}
+if ( ! defined( 'LIONESS_COURSE_NAME' ) ) {
+	define( 'LIONESS_COURSE_NAME', 'Lioness Prime Course — Subscription' );
+}
+
 /** Largest payment screenshot accepted, in megabytes. */
 if ( ! defined( 'LIONESS_MAX_PROOF_MB' ) ) {
-	define( 'LIONESS_MAX_PROOF_MB', 10 );
+	define( 'LIONESS_MAX_PROOF_MB', 6 );
 }
-/** Most invoices one visitor may trigger per hour. */
+/** Invoices one visitor may trigger per hour. */
 if ( ! defined( 'LIONESS_RATE_LIMIT' ) ) {
-	define( 'LIONESS_RATE_LIMIT', 6 );
+	define( 'LIONESS_RATE_LIMIT', 5 );
 }
-/** Serve the course page as the site's front page. Set to false to only use /course. */
+/** Invoices the whole site may send per hour, whatever the source. */
+if ( ! defined( 'LIONESS_GLOBAL_LIMIT' ) ) {
+	define( 'LIONESS_GLOBAL_LIMIT', 40 );
+}
+/** Serve the course page as the front page. False leaves only /course. */
 if ( ! defined( 'LIONESS_TAKE_FRONT_PAGE' ) ) {
 	define( 'LIONESS_TAKE_FRONT_PAGE', true );
 }
+/** Origins allowed to post enrollments. Defaults to this site alone. */
+if ( ! defined( 'LIONESS_ALLOWED_ORIGINS' ) ) {
+	define( 'LIONESS_ALLOWED_ORIGINS', '' );
+}
+/** Send a content security policy with the page. */
+if ( ! defined( 'LIONESS_SEND_CSP' ) ) {
+	define( 'LIONESS_SEND_CSP', true );
+}
+/** Close the REST endpoints that list users and media to strangers. */
+if ( ! defined( 'LIONESS_HARDEN_REST' ) ) {
+	define( 'LIONESS_HARDEN_REST', true );
+}
+/** Turn off XML-RPC, a standing brute-force target. */
+if ( ! defined( 'LIONESS_DISABLE_XMLRPC' ) ) {
+	define( 'LIONESS_DISABLE_XMLRPC', true );
+}
+
+/* -------------------------------------------------------------------------
+ * Site hardening
+ * ---------------------------------------------------------------------- */
+
+if ( LIONESS_HARDEN_REST ) {
+	// A stranger can otherwise read every username from /wp-json/wp/v2/users,
+	// and every uploaded file from /wp-json/wp/v2/media.
+	add_filter( 'rest_endpoints', function ( $endpoints ) {
+		if ( is_user_logged_in() ) {
+			return $endpoints;
+		}
+		foreach ( array( '/wp/v2/users', '/wp/v2/users/(?P<id>[\d]+)', '/wp/v2/media', '/wp/v2/media/(?P<id>[\d]+)' ) as $route ) {
+			unset( $endpoints[ $route ] );
+		}
+		return $endpoints;
+	} );
+
+	// /?author=1 otherwise redirects to the author archive and reveals the login name.
+	add_action( 'template_redirect', function () {
+		if ( ! is_admin() && isset( $_GET['author'] ) && ! is_user_logged_in() ) {
+			wp_safe_redirect( home_url( '/' ), 301 );
+			exit;
+		}
+	}, 1 );
+
+	add_filter( 'oembed_response_data', function ( $data ) {
+		unset( $data['author_name'], $data['author_url'] );
+		return $data;
+	} );
+}
+
+if ( LIONESS_DISABLE_XMLRPC ) {
+	add_filter( 'xmlrpc_enabled', '__return_false' );
+	add_filter( 'xmlrpc_methods', '__return_empty_array' );
+}
+
+// Don't advertise the exact WordPress version to someone shopping for exploits.
+remove_action( 'wp_head', 'wp_generator' );
+add_filter( 'the_generator', '__return_empty_string' );
+
+// Never reveal whether it was the username or the password that was wrong.
+add_filter( 'login_errors', function () {
+	return 'Those details were not recognised.';
+} );
 
 /* -------------------------------------------------------------------------
  * Serving the page
  * ---------------------------------------------------------------------- */
 
-/** True when the visitor asked for /course (with or without a trailing slash). */
+/** True when the visitor asked for /course, with or without a trailing slash. */
 function lioness_is_course_path() {
 	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
 	$path = trim( (string) wp_parse_url( $uri, PHP_URL_PATH ), '/' );
@@ -80,9 +163,33 @@ add_action( 'template_redirect', function () {
 	$base = plugin_dir_url( __FILE__ ) . 'page/';
 	$html = str_replace( array( '"assets/', "'assets/" ), array( '"' . $base . 'assets/', "'" . $base . 'assets/' ), $html );
 
+	// Keep the displayed price and the invoiced price the same figure.
+	$html = preg_replace( '/(\busd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . LIONESS_PRICE_USD, $html, 1 );
+	$html = preg_replace( '/(\bbhd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . LIONESS_PRICE_BHD, $html, 1 );
+
 	status_header( 200 );
 	nocache_headers();
 	header( 'Content-Type: text/html; charset=UTF-8' );
+	header( 'X-Content-Type-Options: nosniff' );
+	header( 'X-Frame-Options: SAMEORIGIN' );          // no framing the payment page
+	header( 'Referrer-Policy: strict-origin-when-cross-origin' );
+	header( 'Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()' );
+
+	if ( LIONESS_SEND_CSP ) {
+		header( 'Content-Security-Policy: ' . implode( '; ', array(
+			"default-src 'self'",
+			"img-src 'self' data:",                                   // the screenshot preview is a data: URL
+			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+			"font-src 'self' https://fonts.gstatic.com",
+			"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+			"connect-src 'self'",                                     // the invoice endpoint is same-origin
+			"form-action 'self'",
+			"frame-ancestors 'self'",
+			"base-uri 'self'",
+			'block-all-mixed-content',
+		) ) );
+	}
+
 	echo $html; // phpcs:ignore WordPress.Security.EscapeOutput -- a whole HTML document, shipped with the plugin
 	exit;
 }, 0 );
@@ -94,7 +201,10 @@ add_action( 'template_redirect', function () {
 add_action( 'init', function () {
 	register_post_type( 'lp_enrollment', array(
 		'label'           => 'Enrollments',
-		'public'          => false,
+		'public'          => false,      // never a front-end URL
+		'publicly_queryable' => false,
+		'exclude_from_search' => true,
+		'show_in_rest'    => false,      // never served over the REST API
 		'show_ui'         => true,
 		'show_in_menu'    => true,
 		'menu_icon'       => 'dashicons-tickets-alt',
@@ -111,7 +221,6 @@ add_filter( 'manage_lp_enrollment_posts_columns', function ( $cols ) {
 		'lp_who'    => 'Buyer',
 		'lp_pay'    => 'Payment',
 		'lp_proof'  => 'Proof',
-		'lp_amount' => 'Amount',
 		'date'      => 'Received',
 	);
 } );
@@ -124,22 +233,196 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		echo $get( 'lp_name' ) . '<br><small>' . $get( 'lp_email' ) . ' &middot; ' . $get( 'lp_snapchat' ) . '</small>';
 	} elseif ( 'lp_pay' === $col ) {
 		$txn = $get( 'lp_transaction' );
-		echo $get( 'lp_method' ) . ( '' !== $txn ? '<br><small>' . $txn . '</small>' : '' );
+		echo $get( 'lp_method' ) . '<br><small>' . $get( 'lp_amount' ) . ( '' !== $txn ? ' &middot; ' . $txn : '' ) . '</small>';
 	} elseif ( 'lp_proof' === $col ) {
-		$url = (string) get_post_meta( $post_id, 'lp_proof_url', true );
+		$url = lioness_proof_url( $post_id );
 		if ( '' !== $url ) {
-			echo '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener"><img src="' . esc_url( $url )
-				. '" alt="Payment screenshot" style="width:56px;height:56px;object-fit:cover;border-radius:6px"></a>';
+			echo '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener noreferrer"><img src="' . esc_url( $url )
+				. '" alt="Payment screenshot" style="width:56px;height:56px;object-fit:cover;border:1px solid #ddd"></a>';
 		} else {
 			echo '<span style="color:#b3b3b3">none</span>';
 		}
-	} elseif ( 'lp_amount' === $col ) {
-		echo $get( 'lp_amount' );
 	}
 }, 10, 2 );
 
 /* -------------------------------------------------------------------------
- * REST endpoint
+ * Payment screenshots
+ *
+ * These are bank receipts: names, amounts, sometimes account numbers. They are
+ * deliberately NOT put in the media library, because /wp-json/wp/v2/media lets
+ * anyone list every attachment on a site. They live in a directory closed to the
+ * web and are handed out only to signed-in staff.
+ * ---------------------------------------------------------------------- */
+
+function lioness_proof_dir() {
+	$uploads = wp_upload_dir();
+	$dir     = trailingslashit( $uploads['basedir'] ) . 'lioness-proofs';
+
+	if ( ! file_exists( $dir ) ) {
+		wp_mkdir_p( $dir );
+	}
+	// Belt and braces: deny at the web server, and leave nothing to index.
+	$htaccess = $dir . '/.htaccess';
+	if ( ! file_exists( $htaccess ) ) {
+		file_put_contents( $htaccess,
+			"Require all denied\n" .
+			"<IfModule !mod_authz_core.c>\nOrder allow,deny\nDeny from all\n</IfModule>\n"
+		);
+	}
+	$index = $dir . '/index.php';
+	if ( ! file_exists( $index ) ) {
+		file_put_contents( $index, "<?php\n// Silence is golden.\n" );
+	}
+	return $dir;
+}
+
+/** An admin-only URL for an enrollment's screenshot, or '' when there is none. */
+function lioness_proof_url( $post_id ) {
+	$file = (string) get_post_meta( $post_id, 'lp_proof_file', true );
+	if ( '' === $file ) {
+		return '';
+	}
+	return add_query_arg( array(
+		'action'   => 'lioness_proof',
+		'id'       => (int) $post_id,
+		'_wpnonce' => wp_create_nonce( 'lioness_proof_' . (int) $post_id ),
+	), admin_url( 'admin-ajax.php' ) );
+}
+
+add_action( 'wp_ajax_lioness_proof', function () {
+	$id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+
+	if ( ! $id || ! current_user_can( 'edit_post', $id ) || 'lp_enrollment' !== get_post_type( $id ) ) {
+		status_header( 403 );
+		exit;
+	}
+	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'lioness_proof_' . $id ) ) {
+		status_header( 403 );
+		exit;
+	}
+
+	// basename() so a tampered meta value can never walk out of the directory.
+	$name = basename( (string) get_post_meta( $id, 'lp_proof_file', true ) );
+	$path = lioness_proof_dir() . '/' . $name;
+
+	if ( '' === $name || ! is_readable( $path ) ) {
+		status_header( 404 );
+		exit;
+	}
+	$type = wp_check_filetype( $path );
+	nocache_headers();
+	header( 'Content-Type: ' . ( $type['type'] ? $type['type'] : 'application/octet-stream' ) );
+	header( 'Content-Length: ' . filesize( $path ) );
+	header( 'X-Content-Type-Options: nosniff' );
+	header( 'Content-Disposition: inline; filename="' . $name . '"' );
+	readfile( $path );
+	exit;
+} );
+
+/**
+ * Validates and stores the buyer's screenshot.
+ *
+ * Nothing the browser says about the file is believed. The bytes are decoded to
+ * confirm they really are an image, and then re-encoded from the decoded pixels,
+ * which discards anything hiding alongside them — a file that is both a valid
+ * JPEG and a valid script cannot survive being redrawn.
+ *
+ * @return string|null The stored filename, or null when there is nothing usable.
+ */
+function lioness_store_proof( $b64, $ref ) {
+	$b64 = preg_replace( '#^data:[^;]+;base64,#', '', trim( (string) $b64 ) );
+	if ( '' === $b64 ) {
+		return null;
+	}
+	// Base64 inflates by about a third; check the envelope before decoding it.
+	if ( strlen( $b64 ) > LIONESS_MAX_PROOF_MB * 1024 * 1024 * 1.4 ) {
+		return null;
+	}
+	$bytes = base64_decode( $b64, true );
+	if ( false === $bytes || strlen( $bytes ) < 128 || strlen( $bytes ) > LIONESS_MAX_PROOF_MB * 1024 * 1024 ) {
+		return null;
+	}
+
+	$info = @getimagesizefromstring( $bytes );
+	if ( ! $info || empty( $info['mime'] ) ) {
+		return null;
+	}
+	$allowed = array(
+		'image/jpeg' => 'jpg',
+		'image/png'  => 'png',
+		'image/webp' => 'webp',
+	);
+	if ( ! isset( $allowed[ $info['mime'] ] ) ) {
+		return null;
+	}
+	// A screenshot far larger than any phone screen is not a screenshot.
+	if ( $info[0] > 6000 || $info[1] > 6000 ) {
+		return null;
+	}
+
+	$ext   = $allowed[ $info['mime'] ];
+	$clean = lioness_reencode_image( $bytes, $info['mime'] );
+	if ( null !== $clean ) {
+		$bytes = $clean;
+	}
+
+	$name = sprintf(
+		'proof-%s-%s.%s',
+		strtolower( preg_replace( '/[^A-Za-z0-9\-]/', '', (string) $ref ) ),
+		wp_generate_password( 24, false, false ),
+		$ext
+	);
+	$name = sanitize_file_name( $name );
+	$path = lioness_proof_dir() . '/' . $name;
+
+	if ( false === file_put_contents( $path, $bytes ) ) {
+		return null;
+	}
+	@chmod( $path, 0640 );
+	return $name;
+}
+
+/** Redraws an image from its decoded pixels, dropping everything else. */
+function lioness_reencode_image( $bytes, $mime ) {
+	if ( ! function_exists( 'imagecreatefromstring' ) ) {
+		return null;   // no GD; the image was still validated above
+	}
+	$img = @imagecreatefromstring( $bytes );
+	if ( ! $img ) {
+		return null;
+	}
+	ob_start();
+	if ( 'image/png' === $mime ) {
+		imagealphablending( $img, false );
+		imagesavealpha( $img, true );
+		imagepng( $img, null, 6 );
+	} elseif ( 'image/webp' === $mime && function_exists( 'imagewebp' ) ) {
+		imagewebp( $img, null, 88 );
+	} else {
+		imagejpeg( $img, null, 88 );
+	}
+	$out = ob_get_clean();
+	imagedestroy( $img );
+	return ( is_string( $out ) && '' !== $out ) ? $out : null;
+}
+
+/** Removes the screenshot from disk when its enrollment is deleted. */
+add_action( 'before_delete_post', function ( $post_id ) {
+	if ( 'lp_enrollment' !== get_post_type( $post_id ) ) {
+		return;
+	}
+	$name = basename( (string) get_post_meta( $post_id, 'lp_proof_file', true ) );
+	if ( '' === $name ) {
+		return;
+	}
+	$path = lioness_proof_dir() . '/' . $name;
+	if ( is_file( $path ) ) {
+		@unlink( $path );
+	}
+} );
+
+/* -------------------------------------------------------------------------
+ * The enrollment endpoint
  * ---------------------------------------------------------------------- */
 
 add_action( 'rest_api_init', function () {
@@ -149,7 +432,6 @@ add_action( 'rest_api_init', function () {
 			'callback'            => 'lioness_handle_invoice',
 			'permission_callback' => '__return_true',
 		),
-		// Browsers send a preflight before the POST.
 		array(
 			'methods'             => 'OPTIONS',
 			'callback'            => function () {
@@ -160,18 +442,34 @@ add_action( 'rest_api_init', function () {
 	) );
 } );
 
+/** Origins permitted to post an enrollment: this site, plus any explicitly listed. */
+function lioness_allowed_origins() {
+	$origins = array( untrailingslashit( home_url() ), untrailingslashit( site_url() ) );
+	foreach ( explode( ',', (string) LIONESS_ALLOWED_ORIGINS ) as $extra ) {
+		$extra = untrailingslashit( trim( $extra ) );
+		if ( '' !== $extra ) {
+			$origins[] = $extra;
+		}
+	}
+	return array_unique( array_filter( $origins ) );
+}
+
 /**
- * The enrollment page is served from a static host, so this one route answers
- * cross-origin requests. It never reads cookies and never authenticates, so it
- * cannot be used to act as a logged-in user.
+ * Answers only the origins we know about, rather than every site on the web.
+ * The route never reads cookies and never authenticates, so it cannot be used
+ * to act as a signed-in user.
  */
 add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
-	if ( 0 === strpos( $request->get_route(), '/lioness/v1/' ) ) {
-		header( 'Access-Control-Allow-Origin: *' );
+	if ( 0 !== strpos( $request->get_route(), '/lioness/v1/' ) ) {
+		return $served;
+	}
+	$origin = untrailingslashit( (string) get_http_origin() );
+	if ( '' !== $origin && in_array( $origin, lioness_allowed_origins(), true ) ) {
+		header( 'Access-Control-Allow-Origin: ' . esc_url_raw( $origin ) );
 		header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
 		header( 'Access-Control-Allow-Headers: Content-Type' );
-		header( 'Vary: Origin' );
 	}
+	header( 'Vary: Origin' );
 	return $served;
 }, 10, 3 );
 
@@ -181,21 +479,26 @@ function lioness_client_key() {
 }
 
 /**
- * Builds and sends the invoice.
+ * Records the enrollment and sends the invoice.
  *
- * Everything in the message is assembled here from sanitised fields, and the
- * recipients are the buyer's own address plus the fixed merchant copy — a caller
- * cannot choose who receives mail or what the body says, so the route is not a
- * relay someone else can send mail through.
+ * The message is assembled here from sanitised fields, and the recipients are
+ * the buyer's own address plus a fixed list — a caller cannot choose who gets
+ * mail or what it says, so this is not a relay someone else can send through.
+ * What things cost is decided here too, not by the browser.
  */
 function lioness_handle_invoice( WP_REST_Request $request ) {
-	// Simple per-visitor rate limit.
+	// One visitor, and then the whole site, per hour.
 	$key   = lioness_client_key();
 	$count = (int) get_transient( $key );
 	if ( $count >= LIONESS_RATE_LIMIT ) {
 		return new WP_REST_Response( array( 'ok' => false, 'error' => 'rate_limited' ), 429 );
 	}
+	$global = (int) get_transient( 'lioness_rl_global' );
+	if ( $global >= LIONESS_GLOBAL_LIMIT ) {
+		return new WP_REST_Response( array( 'ok' => false, 'error' => 'busy' ), 429 );
+	}
 	set_transient( $key, $count + 1, HOUR_IN_SECONDS );
+	set_transient( 'lioness_rl_global', $global + 1, HOUR_IN_SECONDS );
 
 	// Bots fill hidden fields in; real visitors never see this one.
 	if ( '' !== trim( (string) $request->get_param( 'website' ) ) ) {
@@ -214,53 +517,53 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		return new WP_REST_Response( array( 'ok' => false, 'error' => 'invalid_input' ), 400 );
 	}
 
+	// Only these two methods exist, and each has one price. Anything the browser
+	// sends about the amount or the course is ignored.
+	$method = ( 'PayPal' === $clean( 'method', 40 ) ) ? 'PayPal' : 'Benefit Pay';
+	$amount = ( 'PayPal' === $method )
+		? '$' . LIONESS_PRICE_USD
+		: LIONESS_PRICE_BHD . ' BHD';
+
+	$proof_file = lioness_store_proof( (string) $request->get_param( 'proof_base64' ), $ref );
+
 	$data = array(
 		'name'        => $name,
 		'email'       => $email,
 		'snapchat'    => $clean( 'snapchat', 60 ),
 		'reference'   => $ref,
 		'invoice_no'  => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
-		'course'      => $clean( 'course', 160 ),
+		'course'      => LIONESS_COURSE_NAME,
 		'course_note' => $clean( 'course_note', 300 ),
-		'amount'      => $clean( 'amount', 40 ),
-		'method'      => $clean( 'method', 40 ),
+		'amount'      => $amount,
+		'method'      => $method,
 		'transaction' => $clean( 'transaction', 80 ),
-		'proof_url'   => '',
 		'date'        => date_i18n( 'd M Y, H:i' ),
+		'has_proof'   => (bool) $proof_file,
 	);
-
-	// The payment screenshot. Never trust what the browser says it is: the bytes
-	// are decoded and identified here, and anything that is not a real JPEG, PNG
-	// or WebP is dropped rather than written to disk.
-	$proof = lioness_store_proof(
-		(string) $request->get_param( 'proof_base64' ),
-		$data['reference']
-	);
-	$data['proof_url'] = $proof ? (string) $proof['url'] : '';
 
 	// Keep the record first, so an enrollment is never lost to a mail failure.
 	$post_id = wp_insert_post( array(
 		'post_type'   => 'lp_enrollment',
 		'post_status' => 'publish',
 		'post_title'  => $data['reference'] . ' — ' . $data['name'],
-	) );
+	), true );
+
 	if ( $post_id && ! is_wp_error( $post_id ) ) {
 		foreach ( array( 'name', 'email', 'snapchat', 'reference', 'amount', 'method', 'transaction' ) as $k ) {
 			update_post_meta( $post_id, 'lp_' . $k, $data[ $k ] );
 		}
-		if ( $proof ) {
-			update_post_meta( $post_id, 'lp_proof_url', $proof['url'] );
-			update_post_meta( $post_id, 'lp_proof_id', $proof['id'] );
-			wp_update_post( array( 'ID' => $proof['id'], 'post_parent' => $post_id ) );
-			set_post_thumbnail( $post_id, $proof['id'] );
+		if ( $proof_file ) {
+			update_post_meta( $post_id, 'lp_proof_file', $proof_file );
 		}
 	}
+
+	$copies = lioness_copy_list();
 
 	$sent_buyer = wp_mail(
 		$email,
 		sprintf( 'Your Lioness Prime Course invoice — %s', $data['reference'] ),
 		lioness_invoice_html( $data, false ),
-		lioness_headers( LIONESS_MERCHANT_EMAIL, lioness_copy_list() )
+		lioness_headers( LIONESS_MERCHANT_EMAIL, $copies )
 	);
 
 	wp_mail(
@@ -268,72 +571,12 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		sprintf( 'New enrollment — %s (%s)', $data['name'], $data['reference'] ),
 		lioness_invoice_html( $data, true ),
 		lioness_headers( $email, LIONESS_INVOICE_COPY ),
-		$proof ? array( $proof['path'] ) : array()
+		$proof_file ? array( lioness_proof_dir() . '/' . $proof_file ) : array()
 	);
 
-	return new WP_REST_Response( array( 'ok' => (bool) $sent_buyer, 'reference' => $data['reference'] ), $sent_buyer ? 200 : 502 );
-}
-
-/**
- * Saves the buyer's payment screenshot into the media library.
- *
- * @param string $b64 Raw base64 payload from the request (no data: prefix).
- * @param string $ref The enrollment reference, used only to name the file.
- * @return array|null { id, url, path } or null when there is nothing usable.
- */
-function lioness_store_proof( $b64, $ref ) {
-	$b64 = preg_replace( '#^data:[^;]+;base64,#', '', trim( $b64 ) );
-	if ( '' === $b64 ) {
-		return null;
-	}
-	// Base64 inflates by about a third; check before decoding.
-	if ( strlen( $b64 ) > LIONESS_MAX_PROOF_MB * 1024 * 1024 * 1.4 ) {
-		return null;
-	}
-	$bytes = base64_decode( $b64, true );
-	if ( false === $bytes || strlen( $bytes ) < 128 ) {
-		return null;
-	}
-	if ( strlen( $bytes ) > LIONESS_MAX_PROOF_MB * 1024 * 1024 ) {
-		return null;
-	}
-
-	// Identify the image from its own content, not from anything the caller said.
-	$info = @getimagesizefromstring( $bytes );
-	if ( ! $info || empty( $info['mime'] ) ) {
-		return null;
-	}
-	$allowed = array(
-		'image/jpeg' => 'jpg',
-		'image/png'  => 'png',
-		'image/webp' => 'webp',
-	);
-	if ( ! isset( $allowed[ $info['mime'] ] ) ) {
-		return null;
-	}
-
-	$name   = sprintf( 'proof-%s-%s.%s', strtolower( $ref ), wp_generate_password( 8, false, false ), $allowed[ $info['mime'] ] );
-	$upload = wp_upload_bits( sanitize_file_name( $name ), null, $bytes );
-	if ( ! empty( $upload['error'] ) || empty( $upload['file'] ) ) {
-		return null;
-	}
-
-	$attachment_id = wp_insert_attachment( array(
-		'post_mime_type' => $info['mime'],
-		'post_title'     => sprintf( 'Payment proof %s', $ref ),
-		'post_status'    => 'inherit',
-	), $upload['file'] );
-
-	if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
-		return null;
-	}
-	require_once ABSPATH . 'wp-admin/includes/image.php';
-	wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $upload['file'] ) );
-
-	return array(
-		'id'   => $attachment_id,
-		'url'  => $upload['url'],
-		'path' => $upload['file'],
+	return new WP_REST_Response(
+		array( 'ok' => (bool) $sent_buyer, 'reference' => $data['reference'] ),
+		$sent_buyer ? 200 : 502
 	);
 }
 
@@ -359,47 +602,43 @@ function lioness_copy_list() {
 }
 
 function lioness_invoice_html( array $d, $for_merchant ) {
-	$e   = 'esc_html';
 	$row = function ( $k, $v ) {
-		return '<tr><td style="padding:9px 0;color:#7A6E8C;font-size:14px">' . esc_html( $k ) .
-			'</td><td style="padding:9px 0;text-align:right;font-size:14px;color:#1B1230"><strong>' .
+		return '<tr><td style="padding:9px 0;color:#675D71;font-size:14px">' . esc_html( $k ) .
+			'</td><td style="padding:9px 0;text-align:right;font-size:14px;color:#191220"><strong>' .
 			esc_html( $v ) . '</strong></td></tr>';
 	};
 
+	$first = explode( ' ', $d['name'] );
 	$intro = $for_merchant
-		? '<p style="margin:0 0 18px;color:#4A3B62;font-size:15px">A new enrollment came in through the course page. The buyer has been sent this same invoice.</p>'
-		: '<p style="margin:0 0 18px;color:#4A3B62;font-size:15px">Thank you for joining the Lioness Prime Course, ' . $e( explode( ' ', $d['name'] )[0] ) . '. Here is your invoice — please keep it. Your access is opened once we confirm the payment against your reference, normally within 24 hours.</p>';
+		? '<p style="margin:0 0 18px;color:#53475D;font-size:15px">A new enrollment came in through the course page. The buyer has been sent this same invoice. Their payment screenshot is attached.</p>'
+		: '<p style="margin:0 0 18px;color:#53475D;font-size:15px">Thank you for joining the Lioness Prime Course, ' . esc_html( $first[0] ) . '. Here is your invoice — please keep it. Your access is opened once we confirm the payment against your reference, normally within 24 hours.</p>';
 
-	return '<div style="background:#F6F1FC;padding:28px 12px;font-family:Helvetica,Arial,sans-serif">'
-		. '<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E7DBF6">'
-		. '<div style="background:#3E1A63;padding:22px 26px">'
+	// The screenshot is never linked: that URL is only for signed-in staff.
+	$proof_line = $d['has_proof'] ? $row( 'Proof of payment', $for_merchant ? 'Attached' : 'Received' ) : '';
+
+	return '<div style="background:#F5F1F8;padding:28px 12px;font-family:Helvetica,Arial,sans-serif">'
+		. '<div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #E1D8E8">'
+		. '<div style="background:#2C1240;padding:22px 26px">'
 		. '<div style="color:#fff;font-size:20px;letter-spacing:.02em">Lioness Prime</div>'
-		. '<div style="color:#C9A227;font-size:11px;letter-spacing:.24em;text-transform:uppercase;margin-top:4px">Course Invoice</div>'
-		. '</div>'
-		. '<div style="padding:26px">'
-		. $intro
+		. '<div style="color:#A8842C;font-size:11px;letter-spacing:.24em;text-transform:uppercase;margin-top:4px">Course Invoice</div>'
+		. '</div><div style="padding:26px">' . $intro
 		. '<table style="width:100%;border-collapse:collapse">'
 		. $row( 'Invoice no.', $d['invoice_no'] )
 		. $row( 'Date', $d['date'] )
 		. $row( 'Reference', $d['reference'] )
 		. $row( 'Item', $d['course'] )
 		. ( '' !== $d['course_note']
-			? '<tr><td colspan="2" style="padding:0 0 10px;color:#7A6E8C;font-size:13px">' . esc_html( $d['course_note'] ) . '</td></tr>'
+			? '<tr><td colspan="2" style="padding:0 0 10px;color:#675D71;font-size:13px">' . esc_html( $d['course_note'] ) . '</td></tr>'
 			: '' )
 		. $row( 'Amount', $d['amount'] )
 		. $row( 'Paid via', $d['method'] )
-		. ( '' !== $d['transaction'] && '—' !== $d['transaction'] ? $row( 'Transaction no.', $d['transaction'] ) : '' )
-		. ( '' !== $d['proof_url'] ? $row( 'Proof of payment', 'Attached' ) : '' )
+		. ( '' !== $d['transaction'] ? $row( 'Transaction no.', $d['transaction'] ) : '' )
+		. $proof_line
 		. '</table>'
-		. ( '' !== $d['proof_url']
-			? '<div style="margin-top:18px"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#7A6E8C;margin-bottom:8px">Payment screenshot</div>'
-				. '<a href="' . esc_url( $d['proof_url'] ) . '"><img src="' . esc_url( $d['proof_url'] )
-				. '" alt="Payment screenshot" style="max-width:100%;border-radius:10px;border:1px solid #ECE6F3"></a></div>'
-			: '' )
-		. '<div style="margin:20px 0 0;padding:16px 18px;background:#FCF7E8;border:1px solid #F1E4B9;border-radius:10px;font-size:13.5px;color:#6B540F">'
+		. '<div style="margin:20px 0 0;padding:16px 18px;background:#FAF6EA;border:1px solid #E8DCBE;font-size:13.5px;color:#6A5417">'
 		. 'Status: payment submitted, pending confirmation. This invoice records the purchase; it is not confirmation that the funds have cleared.'
 		. '</div>'
-		. '<table style="width:100%;border-collapse:collapse;margin-top:22px;border-top:1px solid #ECE6F3">'
+		. '<table style="width:100%;border-collapse:collapse;margin-top:22px;border-top:1px solid #E5E0EA">'
 		. $row( 'Name', $d['name'] )
 		. $row( 'Email', $d['email'] )
 		. $row( 'Snapchat', $d['snapchat'] )

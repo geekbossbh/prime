@@ -117,11 +117,60 @@ who gets the copy (comma-separate for more than one). `LIONESS_FROM_EMAIL` on th
 line below sets the address invoices are sent from. Both are
 `hi@prime.aasaad.com`.
 
-**Safety.** The endpoint is public, because the page has no login. It cannot be
-used to send mail to anyone else: recipients are always the buyer's own address
-plus the fixed copy list, the message body is built on the server rather than
-taken from the request, every field is sanitised, and one visitor may trigger at
-most six invoices an hour.
+## Security
+
+The enrollment endpoint is open to the internet, because the page has no login.
+Everything below assumes a hostile caller.
+
+**It cannot be used to send mail to anyone else.** Recipients are always the
+buyer's own address plus a fixed list set in this file. The message body is
+built on the server, never taken from the request. Every field is sanitised,
+and the subject cannot carry a line break, so headers cannot be injected.
+
+**The browser is not trusted with the price.** `LIONESS_PRICE_USD`,
+`LIONESS_PRICE_BHD` and `LIONESS_COURSE_NAME` decide what the invoice says, and
+the amount the page displays is rewritten from those same constants as it is
+served — so editing the page in a browser before submitting changes nothing, and
+the two figures cannot drift apart. The payment method is matched against a list
+of two; anything else is treated as Benefit Pay.
+
+**Payment screenshots are not in the media library.** `/wp-json/wp/v2/media`
+lets anyone list every attachment on a WordPress site, and these are bank
+receipts. They are written to `wp-content/uploads/lioness-proofs/`, which carries
+an `.htaccess` denying the web server, under a filename with 24 random
+characters. They are served only through `admin-ajax.php` to a signed-in user who
+can edit that enrollment, with a nonce. Deleting an enrollment deletes its file.
+
+**Uploads are identified by their content.** The bytes are decoded to confirm
+they are really a JPEG, PNG or WebP — what the browser claimed is ignored — and
+then the image is redrawn from its decoded pixels. A file that is both a valid
+image and a valid script does not survive being redrawn. SVG is refused
+outright, files over `LIONESS_MAX_PROOF_MB` are refused, and so is anything
+larger than 6000px on a side.
+
+**Flooding is capped** at 5 invoices per visitor per hour and 40 across the whole
+site per hour, with a honeypot field that bots fill in and people never see.
+
+**Cross-origin requests** are answered only for this site's own origin. Add
+others to `LIONESS_ALLOWED_ORIGINS` if you ever serve the page from elsewhere.
+
+**The page is served with** a content security policy, `X-Frame-Options`
+(so it cannot be framed inside another site to harvest details),
+`X-Content-Type-Options`, a referrer policy and a permissions policy.
+
+**Site-wide, the plugin also** closes `/wp-json/wp/v2/users` and
+`/wp-json/wp/v2/media` to strangers — the users endpoint was publishing your
+admin login name — redirects `?author=` probes, turns off XML-RPC, hides the
+WordPress version, and stops the login form saying whether it was the username
+or the password that was wrong. Each of these has a constant at the top of the
+plugin if you need it back; `LIONESS_DISABLE_XMLRPC` is the one to watch if you
+ever use the WordPress mobile app.
+
+### What this does not cover
+
+Keep WordPress, plugins and the theme updated, use a long unique admin password
+with two-factor if DreamHost offers it, and take backups. No amount of care in
+this plugin helps if the admin account is guessed.
 
 If the plugin is not installed, the page simply skips the email and falls back to
 the print / copy / send buttons. Setting `email.provider` to `'emailjs'` switches
