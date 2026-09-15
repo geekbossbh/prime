@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lioness Prime Course — Enrollment</title>
 <meta name="description" content="Lioness Prime Course — enroll in minutes. Pay securely with PayPal or Benefit Pay, get an instant shared reference number and an invoice for your course.">
-<meta name="theme-color" content="#3E1A63">
+<meta name="theme-color" content="#2C1240">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self'; form-action 'self'; base-uri 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <link rel="icon" href="assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/logo-320.png">
 <meta property="og:title" content="Lioness Prime Course">
@@ -440,13 +442,13 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
             <div class="field-grid">
               <div class="field" data-for="fullName">
                 <label for="fullName">Name <span class="req">*</span></label>
-                <input id="fullName" name="fullName" type="text" autocomplete="name" placeholder="As it should read on the invoice">
+                <input id="fullName" name="fullName" type="text" maxlength="120" autocomplete="name" placeholder="As it should read on the invoice">
                 <span class="err">Please enter your name.</span>
               </div>
 
               <div class="field" data-for="email">
                 <label for="email">Email address <span class="req">*</span></label>
-                <input id="email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+                <input id="email" name="email" type="email" maxlength="150" inputmode="email" autocomplete="email" placeholder="you@example.com">
                 <span class="hint">Your invoice and course link are sent here.</span>
                 <span class="err">Please enter a valid email address.</span>
               </div>
@@ -455,7 +457,7 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
                 <label for="snap">Snapchat username <span class="req">*</span></label>
                 <div class="with-prefix">
                   <span class="pfx">@</span>
-                  <input id="snap" name="snap" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="yourusername">
+                  <input id="snap" name="snap" type="text" maxlength="30" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="yourusername">
                 </div>
                 <span class="hint">This is where your access is opened.</span>
                 <span class="err">Enter your Snapchat username (letters, numbers, . _ -).</span>
@@ -738,6 +740,15 @@ const CONFIG = {
 
 /* ========================================================================== */
 
+/* A cached page cannot send X-Frame-Options, so refuse to run framed: a payment
+   page inside someone else's site is a phishing shell. */
+if (window.top !== window.self) {
+  try { window.top.location = window.self.location.href; }
+  catch (e) { document.documentElement.innerHTML =
+    '<p style="font:16px system-ui;padding:40px">This page cannot be shown inside another site. ' +
+    '<a href="' + location.href + '" target="_blank" rel="noopener">Open it directly</a>.</p>'; }
+}
+
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const STORE = 'lioness-prime-enrollment';
@@ -805,11 +816,13 @@ function setBad(name, bad) {
   return !bad;
 }
 
+const LIMITS = { fullName: 120, email: 150, snap: 30, transaction: 60 };
+
 function validate() {
   const v = {
-    fullName: $('#fullName').value.trim(),
-    email:    $('#email').value.trim(),
-    snap:     $('#snap').value.trim().replace(/^@+/, '')
+    fullName: $('#fullName').value.trim().slice(0, LIMITS.fullName),
+    email:    $('#email').value.trim().slice(0, LIMITS.email),
+    snap:     $('#snap').value.trim().replace(/^@+/, '').slice(0, LIMITS.snap)
   };
   let ok = true;
   ok = setBad('fullName', v.fullName.length < 2) && ok;
@@ -987,7 +1000,7 @@ function confirmView(method) {
 
       <div class="field" style="margin-top:16px">
         <label for="txnIn">Transaction / receipt number <span style="color:var(--muted)">(optional)</span></label>
-        <input id="txnIn" type="text" placeholder="From your payment confirmation" autocapitalize="characters">
+        <input id="txnIn" type="text" maxlength="60" placeholder="From your payment confirmation" autocapitalize="characters">
         <span class="hint">Leave it blank if you don't have it yet — your reference is enough.</span>
       </div>
       <div class="modal-foot">
@@ -1009,7 +1022,8 @@ function confirmView(method) {
     if (ev === 'drop' && e.dataTransfer.files[0]) acceptProof(e.dataTransfer.files[0]);
   }));
 
-  $('#confirmPaid').addEventListener('click', () => {
+  $('#confirmPaid').addEventListener('click', e => {
+    if (e.currentTarget.dataset.busy === '1') return;
     if (CONFIG.proof.required && !proof) {
       $('#proofErr').textContent = 'Please attach a screenshot of your payment.';
       $('#proofField').classList.add('bad');
@@ -1017,11 +1031,12 @@ function confirmView(method) {
       return;
     }
     state.method = method;
-    state.txn = $('#txnIn').value.trim();
+    state.txn = $('#txnIn').value.trim().slice(0, LIMITS.transaction);
     state.paidAt = new Date().toISOString();
     state.emailed = false;
     state.proofName = proof ? proof.name : '';
     state.proofSize = proof ? proof.bytes : 0;
+    e.currentTarget.dataset.busy = '1';
     save(); closeModal(); buildInvoice(); goStep(3);
     sendInvoiceEmail(false);
   });
@@ -1294,8 +1309,19 @@ function emailParams() {
   };
 }
 
+let sending = false, lastSend = 0;
+
 async function sendInvoiceEmail(manual) {
   if (!emailReady()) { mailStatus(null); return; }
+  if (sending) return;
+  const since = Date.now() - lastSend;
+  if (manual && since < 15000) {
+    toast(`Just a moment — you can send again in ${Math.ceil((15000 - since) / 1000)}s.`);
+    return;
+  }
+  sending = true; lastSend = Date.now();
+  const btn = $('#resendEmail');
+  if (btn) btn.disabled = true;
   mailStatus('sending', 'Emailing your invoice…');
   try {
     if (CONFIG.email.provider === 'wordpress') {
@@ -1316,6 +1342,10 @@ async function sendInvoiceEmail(manual) {
   } catch (err) {
     mailStatus('failed',
       "We couldn't email it automatically — please save a copy of the invoice below.");
+  } finally {
+    sending = false;
+    const b = $('#resendEmail');
+    if (b) b.disabled = false;
   }
 }
 
@@ -1372,6 +1402,9 @@ function paintStatic() {
 function wire() {
   $('#detailsForm').addEventListener('submit', e => {
     e.preventDefault();
+    if (e.target.dataset.busy === '1') return;
+    e.target.dataset.busy = '1';
+    setTimeout(() => { e.target.dataset.busy = ''; }, 600);
     const v = validate();
     if (!v) { const bad = $('.field.bad input'); if (bad) bad.focus(); return; }
     Object.assign(state, v);

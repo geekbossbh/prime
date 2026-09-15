@@ -166,6 +166,47 @@ or the password that was wrong. Each of these has a constant at the top of the
 plugin if you need it back; `LIONESS_DISABLE_XMLRPC` is the one to watch if you
 ever use the WordPress mobile app.
 
+### Standing up to abuse
+
+**Length caps everywhere.** Name 120 characters, email 150, Snapchat 30,
+transaction number 60 — enforced by `maxlength` in the browser, again in the
+page's own validation, and again on the server, where anything longer is cut
+rather than stored. A 50,000-character name arrives as 120.
+
+**Oversized requests never reach the parser.** A POST to the enrollment route
+declaring more than `LIONESS_MAX_REQUEST_KB` is refused on the earliest hook a
+plugin can use, so a multi-megabyte body costs a header check instead of a JSON
+decode.
+
+**Flood limits at four depths:** no two enrollments from one visitor within
+`LIONESS_MIN_GAP` seconds, `LIONESS_RATE_LIMIT` an hour each, ten malformed
+requests an hour before that address is ignored, and `LIONESS_GLOBAL_LIMIT`
+across the whole site per hour whatever the source.
+
+**Screenshots cannot fill the disk.** Each is capped at
+`LIONESS_MAX_PROOF_MB`, scaled down in the browser before upload, and once the
+stored total passes `LIONESS_PROOF_QUOTA_MB` new images are refused while the
+enrollment itself is still recorded.
+
+**Nothing submits twice.** The enrollment form, the confirm button and the
+resend button all refuse to fire while one is already in flight, and resending
+an invoice has a fifteen-second cool-down.
+
+**Logins are throttled.** `LIONESS_LOGIN_TRIES` failures from one address and it
+is locked out for `LIONESS_LOGIN_LOCKOUT` seconds — WordPress on its own will
+let someone guess passwords as fast as they can send requests.
+
+**The page is cheap to serve.** It carries an ETag and a five-minute cache
+lifetime, so repeat visits cost a 304 and WP Super Cache can serve most hits as
+a flat file without PHP running at all. Because a cached file cannot carry
+headers, the content security policy travels in the document itself, and the
+page refuses to run inside another site's frame rather than relying on
+`X-Frame-Options`.
+
+**Cross-origin.** WordPress core answers every origin on REST routes, so this
+plugin sets the header itself on its own route: an unknown caller is handed this
+site's origin, which its browser will refuse to match.
+
 ### What this does not cover
 
 Keep WordPress, plugins and the theme updated, use a long unique admin password

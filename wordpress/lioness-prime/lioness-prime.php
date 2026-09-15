@@ -61,6 +61,25 @@ if ( ! defined( 'LIONESS_RATE_LIMIT' ) ) {
 if ( ! defined( 'LIONESS_GLOBAL_LIMIT' ) ) {
 	define( 'LIONESS_GLOBAL_LIMIT', 40 );
 }
+/** Largest enrollment request accepted, in kilobytes, before anything parses it. */
+if ( ! defined( 'LIONESS_MAX_REQUEST_KB' ) ) {
+	define( 'LIONESS_MAX_REQUEST_KB', 9 * 1024 );
+}
+/** Shortest gap between two enrollments from one visitor, in seconds. */
+if ( ! defined( 'LIONESS_MIN_GAP' ) ) {
+	define( 'LIONESS_MIN_GAP', 8 );
+}
+/** Total megabytes of payment screenshots to keep before refusing new ones. */
+if ( ! defined( 'LIONESS_PROOF_QUOTA_MB' ) ) {
+	define( 'LIONESS_PROOF_QUOTA_MB', 400 );
+}
+/** Failed logins from one address before it is locked out, and for how long. */
+if ( ! defined( 'LIONESS_LOGIN_TRIES' ) ) {
+	define( 'LIONESS_LOGIN_TRIES', 5 );
+}
+if ( ! defined( 'LIONESS_LOGIN_LOCKOUT' ) ) {
+	define( 'LIONESS_LOGIN_LOCKOUT', 900 );
+}
 /** Serve the course page as the front page. False leaves only /course. */
 if ( ! defined( 'LIONESS_TAKE_FRONT_PAGE' ) ) {
 	define( 'LIONESS_TAKE_FRONT_PAGE', true );
@@ -85,6 +104,61 @@ if ( ! defined( 'LIONESS_DISABLE_XMLRPC' ) ) {
 /* -------------------------------------------------------------------------
  * Site hardening
  * ---------------------------------------------------------------------- */
+
+/**
+ * Refuse an oversized enrollment before WordPress reads or decodes the body.
+ * Runs on muplugins_loaded, the earliest hook available to a normal plugin, so a
+ * multi-megabyte POST costs a header check rather than a JSON parse.
+ */
+add_action( 'muplugins_loaded', function () {
+	if ( empty( $_SERVER['REQUEST_METHOD'] ) || 'POST' !== strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) ) {
+		return;
+	}
+	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	if ( false === strpos( $uri, '/lioness/v1/' ) ) {
+		return;
+	}
+	$length = isset( $_SERVER['CONTENT_LENGTH'] ) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
+	if ( $length > LIONESS_MAX_REQUEST_KB * 1024 ) {
+		status_header( 413 );
+		header( 'Content-Type: application/json; charset=UTF-8' );
+		echo wp_json_encode( array( 'ok' => false, 'error' => 'too_large' ) );
+		exit;
+	}
+}, 0 );
+
+/* -------------------------------------------------------------------------
+ * Login throttling
+ *
+ * WordPress lets anyone guess passwords as fast as they can send requests.
+ * ---------------------------------------------------------------------- */
+
+function lioness_login_key() {
+	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown';
+	return 'lioness_login_' . md5( $ip );
+}
+
+add_filter( 'authenticate', function ( $user, $username ) {
+	if ( empty( $username ) ) {
+		return $user;   // an empty form, not an attempt
+	}
+	if ( (int) get_transient( lioness_login_key() ) >= LIONESS_LOGIN_TRIES ) {
+		return new WP_Error(
+			'lioness_locked',
+			sprintf( 'Too many attempts. Try again in %d minutes.', (int) ceil( LIONESS_LOGIN_LOCKOUT / 60 ) )
+		);
+	}
+	return $user;
+}, 1, 2 );
+
+add_action( 'wp_login_failed', function () {
+	$key = lioness_login_key();
+	set_transient( $key, (int) get_transient( $key ) + 1, LIONESS_LOGIN_LOCKOUT );
+} );
+
+add_action( 'wp_login', function () {
+	delete_transient( lioness_login_key() );
+} );
 
 if ( LIONESS_HARDEN_REST ) {
 	// A stranger can otherwise read every username from /wp-json/wp/v2/users,
@@ -167,8 +241,24 @@ add_action( 'template_redirect', function () {
 	$html = preg_replace( '/(\busd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . LIONESS_PRICE_USD, $html, 1 );
 	$html = preg_replace( '/(\bbhd:\s*)[0-9]+(?:\.[0-9]+)?/', '${1}' . LIONESS_PRICE_BHD, $html, 1 );
 
+	// The page is the same for everyone, so let caches and browsers keep it.
+	// Under a flood the cheapest request is the one that never reaches PHP, and
+	// the next cheapest is a 304.
+	$stamp = (int) filemtime( $file );
+	$etag  = '"lp-' . md5( $stamp . '|' . strlen( $html ) . '|' . LIONESS_PRICE_USD . '|' . LIONESS_PRICE_BHD ) . '"';
+
+	$since = isset( $_SERVER['HTTP_IF_NONE_MATCH'] ) ? trim( (string) $_SERVER['HTTP_IF_NONE_MATCH'] ) : '';
+	if ( '' !== $since && false !== strpos( $since, trim( $etag, '"' ) ) ) {
+		status_header( 304 );
+		header( 'ETag: ' . $etag );
+		header( 'Cache-Control: public, max-age=300' );
+		exit;
+	}
+
 	status_header( 200 );
-	nocache_headers();
+	header( 'ETag: ' . $etag );
+	header( 'Last-Modified: ' . gmdate( 'D, d M Y H:i:s', $stamp ) . ' GMT' );
+	header( 'Cache-Control: public, max-age=300' );
 	header( 'Content-Type: text/html; charset=UTF-8' );
 	header( 'X-Content-Type-Options: nosniff' );
 	header( 'X-Frame-Options: SAMEORIGIN' );          // no framing the payment page
@@ -360,6 +450,11 @@ function lioness_store_proof( $b64, $ref ) {
 		return null;
 	}
 
+	// Stop before the disk does.
+	if ( lioness_proof_bytes_used() > LIONESS_PROOF_QUOTA_MB * 1024 * 1024 ) {
+		return null;   // the enrollment is still recorded, just without the image
+	}
+
 	$ext   = $allowed[ $info['mime'] ];
 	$clean = lioness_reencode_image( $bytes, $info['mime'] );
 	if ( null !== $clean ) {
@@ -379,7 +474,21 @@ function lioness_store_proof( $b64, $ref ) {
 		return null;
 	}
 	@chmod( $path, 0640 );
+	lioness_proof_bytes_used( strlen( $bytes ) );
 	return $name;
+}
+
+/**
+ * Running total of stored screenshots, kept as an option so nothing has to walk
+ * the directory on every request. Pass a delta to adjust it.
+ */
+function lioness_proof_bytes_used( $delta = 0 ) {
+	$used = (int) get_option( 'lioness_proof_bytes', 0 );
+	if ( 0 !== $delta ) {
+		$used = max( 0, $used + (int) $delta );
+		update_option( 'lioness_proof_bytes', $used, false );
+	}
+	return $used;
 }
 
 /** Redraws an image from its decoded pixels, dropping everything else. */
@@ -417,6 +526,7 @@ add_action( 'before_delete_post', function ( $post_id ) {
 	}
 	$path = lioness_proof_dir() . '/' . $name;
 	if ( is_file( $path ) ) {
+		lioness_proof_bytes_used( -filesize( $path ) );
 		@unlink( $path );
 	}
 } );
@@ -463,12 +573,17 @@ add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
 	if ( 0 !== strpos( $request->get_route(), '/lioness/v1/' ) ) {
 		return $served;
 	}
-	$origin = untrailingslashit( (string) get_http_origin() );
-	if ( '' !== $origin && in_array( $origin, lioness_allowed_origins(), true ) ) {
-		header( 'Access-Control-Allow-Origin: ' . esc_url_raw( $origin ) );
-		header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
-		header( 'Access-Control-Allow-Headers: Content-Type' );
-	}
+	$allowed = lioness_allowed_origins();
+	$origin  = untrailingslashit( (string) get_http_origin() );
+
+	// WordPress core answers every origin on REST routes, so the header is set
+	// unconditionally here to replace it: an unknown caller is told only this
+	// site's own origin, which its browser will refuse to match.
+	$grant = ( '' !== $origin && in_array( $origin, $allowed, true ) ) ? $origin : reset( $allowed );
+
+	header( 'Access-Control-Allow-Origin: ' . esc_url_raw( $grant ) );
+	header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
+	header( 'Access-Control-Allow-Headers: Content-Type' );
 	header( 'Vary: Origin' );
 	return $served;
 }, 10, 3 );
@@ -493,6 +608,15 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	if ( $count >= LIONESS_RATE_LIMIT ) {
 		return new WP_REST_Response( array( 'ok' => false, 'error' => 'rate_limited' ), 429 );
 	}
+	// Somebody sending rubbish repeatedly is not a buyer.
+	if ( (int) get_transient( $key . '_bad' ) >= 10 ) {
+		return new WP_REST_Response( array( 'ok' => false, 'error' => 'rate_limited' ), 429 );
+	}
+	// And nobody enrolls twice in eight seconds.
+	if ( get_transient( $key . '_gap' ) ) {
+		return new WP_REST_Response( array( 'ok' => false, 'error' => 'too_fast' ), 429 );
+	}
+	set_transient( $key . '_gap', 1, LIONESS_MIN_GAP );
 	$global = (int) get_transient( 'lioness_rl_global' );
 	if ( $global >= LIONESS_GLOBAL_LIMIT ) {
 		return new WP_REST_Response( array( 'ok' => false, 'error' => 'busy' ), 429 );
@@ -514,6 +638,7 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	$name  = $clean( 'customer_name', 120 );
 
 	if ( ! is_email( $email ) || '' === $ref || '' === $name ) {
+		set_transient( $key . '_bad', (int) get_transient( $key . '_bad' ) + 1, HOUR_IN_SECONDS );
 		return new WP_REST_Response( array( 'ok' => false, 'error' => 'invalid_input' ), 400 );
 	}
 
