@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.3.0.
+ * Lioness Prime — core, version 2.4.0.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.3.0' );
+define( 'LIONESS_VERSION', '2.4.0' );
 
 /**
  * The plugin's own directory and URL.
@@ -1262,6 +1262,80 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 }, 20, 2 );
 
 /* -------------------------------------------------------------------------
+ * Mail diagnostics
+ *
+ * wp_mail() returning true only means the message was handed to the server's
+ * mail transport. Whether it then reached anybody is invisible from inside
+ * WordPress, which is how invoices can appear to send and never arrive. This
+ * reports how mail is actually configured and lets a real one be sent on
+ * demand, so the answer is a click rather than a guess.
+ * ---------------------------------------------------------------------- */
+
+function lioness_mailer_info() {
+	$smtp   = get_option( 'wp_mail_smtp', array() );
+	$mailer = ( is_array( $smtp ) && ! empty( $smtp['mail']['mailer'] ) ) ? (string) $smtp['mail']['mailer'] : '';
+
+	$labels = array(
+		''        => 'not configured',
+		'mail'    => 'the server\'s own mail (unreliable — messages are often dropped or filed as spam)',
+		'smtp'    => 'another SMTP server',
+		'gmail'   => 'Gmail / Google Workspace',
+		'sendlayer' => 'SendLayer',
+		'smtpcom' => 'SMTP.com',
+		'brevo'   => 'Brevo',
+		'mailgun' => 'Mailgun',
+		'sendgrid'=> 'SendGrid',
+		'postmark'=> 'Postmark',
+		'outlook' => 'Outlook',
+		'zoho'    => 'Zoho Mail',
+	);
+
+	return array(
+		'mailer'   => $mailer,
+		'label'    => isset( $labels[ $mailer ] ) ? $labels[ $mailer ] : $mailer,
+		'reliable' => ( '' !== $mailer && 'mail' !== $mailer ),
+		'from'     => ( is_array( $smtp ) && ! empty( $smtp['mail']['from_email'] ) ) ? $smtp['mail']['from_email'] : '',
+		'last_test'=> get_option( 'lioness_mail_test', array() ),
+	);
+}
+
+add_action( 'admin_post_lioness_test_mail', function () {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( 'Not allowed.' );
+	}
+	check_admin_referer( 'lioness_test_mail' );
+
+	$to    = array_values( array_unique( array_filter( array( lioness_merchant_email(), lioness_copy_email() ) ) ) );
+	$error = '';
+	$catch = function ( $wp_error ) use ( &$error ) {
+		if ( is_wp_error( $wp_error ) ) {
+			$error = $wp_error->get_error_message();
+		}
+	};
+	add_action( 'wp_mail_failed', $catch );
+
+	$sent = wp_mail(
+		$to,
+		'Lioness Prime test message — ' . current_time( 'H:i' ),
+		'<p style="font:15px Helvetica,Arial,sans-serif">This is a test from the Lioness Prime plugin.</p>'
+		. '<p style="font:15px Helvetica,Arial,sans-serif">If you are reading this, course invoices will reach you the same way.</p>',
+		lioness_headers( lioness_merchant_email() )
+	);
+
+	remove_action( 'wp_mail_failed', $catch );
+
+	update_option( 'lioness_mail_test', array(
+		'at'    => time(),
+		'ok'    => (bool) $sent,
+		'to'    => implode( ', ', $to ),
+		'error' => $error,
+	), false );
+
+	wp_safe_redirect( admin_url( 'edit.php?post_type=lp_enrollment&page=lioness-settings&tested=1' ) );
+	exit;
+} );
+
+/* -------------------------------------------------------------------------
  * Settings screen
  * ---------------------------------------------------------------------- */
 
@@ -1319,6 +1393,22 @@ function lioness_settings_page() {
 	<div class="wrap">
 		<h1>Lioness Prime</h1>
 
+		<?php
+		$mail = lioness_mailer_info();
+		if ( ! $mail['reliable'] ) {
+			echo '<div class="notice notice-error inline" style="margin:16px 0;max-width:820px"><p><strong>Email is not set up to send reliably.</strong> WordPress is using ' . esc_html( $mail['label'] ) . '. Invoices can appear to send and never arrive. Set up <em>WP Mail SMTP</em> with a real sending account, then use the test button below.</p></div>';
+		}
+		$t = $mail['last_test'];
+		if ( ! empty( $t['at'] ) ) {
+			$when = human_time_diff( (int) $t['at'] ) . ' ago';
+			if ( ! empty( $t['ok'] ) ) {
+				echo '<div class="notice notice-success inline" style="margin:16px 0;max-width:820px"><p>Last test (' . esc_html( $when ) . ') was accepted for delivery to <code>' . esc_html( $t['to'] ) . '</code>. If it did not arrive, check spam — the message left this site.</p></div>';
+			} else {
+				echo '<div class="notice notice-error inline" style="margin:16px 0;max-width:820px"><p>Last test (' . esc_html( $when ) . ') <strong>failed</strong>: ' . esc_html( $t['error'] ? $t['error'] : 'no reason given' ) . '</p></div>';
+			}
+		}
+		?>
+
 		<h2 class="title">Status</h2>
 		<table class="widefat striped" style="max-width:820px">
 			<tbody>
@@ -1330,6 +1420,18 @@ function lioness_settings_page() {
 			<tr><td>Image library (GD) available</td><td><?php echo $h['gd'] ? $yes : $no . ' — uploads are still checked, just not redrawn'; ?></td></tr>
 			<tr><td>Price charged</td><td><?php echo esc_html( $h['price'] ); ?></td></tr>
 			<tr><td>Invoices sent from</td><td><?php echo esc_html( $h['from_email'] ); ?></td></tr>
+			<tr><td>Invoices go to</td><td><?php echo esc_html( lioness_merchant_email() . ', ' . lioness_copy_email() ); ?></td></tr>
+			<tr><td>Mail is sent via</td><td>
+				<?php
+				echo esc_html( $mail['label'] );
+				echo $mail['reliable'] ? ' <span style="color:#1D6B3F">&#10003;</span>' : ' <span style="color:#B03A4E;font-weight:600">&#10007;</span>';
+				?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:10px">
+					<input type="hidden" name="action" value="lioness_test_mail">
+					<?php wp_nonce_field( 'lioness_test_mail' ); ?>
+					<button type="submit" class="button">Send a test email now</button>
+				</form>
+			</td></tr>
 			<tr><td>Enrollments recorded</td><td><?php echo (int) $h['enrollments']; ?></td></tr>
 			<tr><td>Screenshots stored</td><td><?php echo esc_html( $h['proof_used'] ); ?></td></tr>
 			<tr><td>Latest published version</td><td>
