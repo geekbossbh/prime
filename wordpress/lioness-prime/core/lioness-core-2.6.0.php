@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.5.0.
+ * Lioness Prime — core, version 2.6.0.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.5.0' );
+define( 'LIONESS_VERSION', '2.6.0' );
 
 /**
  * The plugin's own directory and URL.
@@ -65,6 +65,11 @@ if ( ! defined( 'LIONESS_COURSE_NAME' ) ) {
 if ( ! defined( 'LIONESS_UPDATE_MANIFEST' ) ) {
 	define( 'LIONESS_UPDATE_MANIFEST',
 		'https://raw.githubusercontent.com/geekbossbh/prime/refs/heads/claude/affectionate-bell-7uot8x/dist/update.json' );
+}
+
+/** Where PayPal payment notifications are checked. The sandbox is ipnpb.sandbox.paypal.com. */
+if ( ! defined( 'LIONESS_PAYPAL_VERIFY' ) ) {
+	define( 'LIONESS_PAYPAL_VERIFY', 'https://ipnpb.paypal.com/cgi-bin/webscr' );
 }
 
 /** Largest payment screenshot accepted, in megabytes. */
@@ -443,6 +448,9 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 	} elseif ( 'lp_pay' === $col ) {
 		$txn = $get( 'lp_transaction' );
 		echo $get( 'lp_method' ) . '<br><small>' . $get( 'lp_amount' ) . ( '' !== $txn ? ' &middot; ' . $txn : '' ) . '</small>';
+		if ( '' !== $get( 'lp_paid' ) ) {
+			echo '<br><small style="color:#1D6B3F">&#10003; ' . $get( 'lp_paid' ) . '</small>';
+		}
 	} elseif ( 'lp_proof' === $col ) {
 		$url = lioness_proof_url( $post_id );
 		if ( '' !== $url ) {
@@ -680,6 +688,11 @@ add_action( 'rest_api_init', function () {
 			'permission_callback' => '__return_true',
 		),
 	) );
+	register_rest_route( 'lioness/v1', '/paypal', array(
+		'methods'             => 'POST',
+		'callback'            => 'lioness_handle_paypal',
+		'permission_callback' => '__return_true',
+	) );
 	register_rest_route( 'lioness/v1', '/intent', array(
 		array(
 			'methods'             => 'POST',
@@ -794,6 +807,7 @@ function lioness_handle_intent( WP_REST_Request $request ) {
 	);
 
 	$post_id = lioness_pending_enrollment( $ref );
+	$is_new  = ! $post_id;
 	if ( ! $post_id ) {
 		// Already confirmed: that record is complete and is left alone.
 		$done = get_posts( array(
@@ -816,7 +830,225 @@ function lioness_handle_intent( WP_REST_Request $request ) {
 		update_post_meta( $post_id, 'lp_' . $k, $v );
 	}
 
+	if ( $is_new ) {
+		lioness_alert_started( $data );
+	}
+
 	return new WP_REST_Response( array( 'ok' => true ), 200 );
+}
+
+/**
+ * Tells Lioness Prime that someone has gone off to pay, so a payment that arrives
+ * without a confirmation still has a name and an email beside it. Only ever
+ * sent to Lioness Prime's own addresses, never to the address the caller gave.
+ */
+function lioness_alert_started( array $d ) {
+	$line = function ( $k, $v ) {
+		return '<tr><td style="padding:6px 16px 6px 0;color:#675D71">' . esc_html( $k ) . '</td><td><strong>' . esc_html( $v ) . '</strong></td></tr>';
+	};
+	wp_mail(
+		lioness_merchant_email(),
+		sprintf( 'Payment started — %s (%s, %s)', $d['name'], $d['reference'], $d['method'] ),
+		'<div style="font:15px Helvetica,Arial,sans-serif;color:#191220">'
+		. '<p>Someone filled in the course form and has just opened <strong>' . esc_html( $d['method'] ) . '</strong> to pay.</p>'
+		. '<table style="border-collapse:collapse">'
+		. $line( 'Name', $d['name'] ) . $line( 'Email', $d['email'] ) . $line( 'Snapchat', $d['snapchat'] )
+		. $line( 'Reference', $d['reference'] ) . $line( 'Amount', $d['amount'] )
+		. '</table>'
+		. '<p style="color:#675D71">You will get the invoice as well once they confirm, or once PayPal reports the payment. '
+		. 'If a payment arrives and no invoice follows, this is who it came from. It is listed under Enrollments as "not confirmed yet".</p></div>',
+		lioness_headers( $d['email'], lioness_copy_email() )
+	);
+}
+
+/* -------------------------------------------------------------------------
+ * PayPal payment notifications
+ *
+ * PayPal tells this site about every payment the account receives, whether or
+ * not the buyer came through the course page. Each message is sent back to
+ * PayPal to be confirmed as genuine before anything is recorded or mailed, so a
+ * forged one does nothing. The payment is matched to the buyer who started on
+ * the page, by reference or by email; failing that, an enrollment is made from
+ * what PayPal knows about the payer. Either way an invoice goes out.
+ * ---------------------------------------------------------------------- */
+
+function lioness_paypal_url() {
+	return rest_url( 'lioness/v1/paypal' );
+}
+
+/** Keeps the last few notifications, so the settings screen can show they arrive. */
+function lioness_paypal_log( $status, array $ipn = array() ) {
+	$log = get_option( 'lioness_paypal_log', array() );
+	$log = is_array( $log ) ? $log : array();
+	array_unshift( $log, array(
+		'at'     => time(),
+		'status' => $status,
+		'txn'    => isset( $ipn['txn_id'] ) ? mb_substr( (string) $ipn['txn_id'], 0, 40 ) : '',
+		'payer'  => isset( $ipn['payer_email'] ) ? mb_substr( (string) $ipn['payer_email'], 0, 120 ) : '',
+		'amount' => isset( $ipn['mc_gross'] ) ? $ipn['mc_gross'] . ' ' . ( isset( $ipn['mc_currency'] ) ? $ipn['mc_currency'] : '' ) : '',
+	) );
+	update_option( 'lioness_paypal_log', array_slice( $log, 0, 20 ), false );
+}
+
+/** The enrollment for this reference, awaiting confirmation or confirmed, or 0. */
+function lioness_enrollment_by( $key, $value, $statuses = array( 'pending', 'publish' ) ) {
+	$ids = get_posts( array(
+		'post_type'      => 'lp_enrollment',
+		'post_status'    => $statuses,
+		'meta_key'       => $key,
+		'meta_value'     => $value,
+		'fields'         => 'ids',
+		'posts_per_page' => 1,
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+		'no_found_rows'  => true,
+	) );
+	return $ids ? (int) $ids[0] : 0;
+}
+
+function lioness_handle_paypal( WP_REST_Request $request ) {
+	$raw = (string) $request->get_body();
+	if ( '' === $raw || strlen( $raw ) > 20000 ) {
+		return new WP_REST_Response( null, 400 );
+	}
+
+	// Ask PayPal whether it really sent this, byte for byte.
+	$check = wp_remote_post( LIONESS_PAYPAL_VERIFY, array(
+		'timeout'     => 30,
+		'httpversion' => '1.1',
+		'headers'     => array( 'User-Agent' => 'LionessPrime-IPN/' . LIONESS_VERSION, 'Connection' => 'close' ),
+		'body'        => 'cmd=_notify-validate&' . $raw,
+	) );
+
+	parse_str( $raw, $ipn );
+	$charset = isset( $ipn['charset'] ) ? strtoupper( (string) $ipn['charset'] ) : 'UTF-8';
+	foreach ( $ipn as $k => $v ) {
+		$v = (string) $v;
+		if ( 'UTF-8' !== $charset && function_exists( 'mb_convert_encoding' ) ) {
+			$v = mb_convert_encoding( $v, 'UTF-8', $charset );
+		}
+		$ipn[ $k ] = sanitize_text_field( $v );
+	}
+
+	if ( is_wp_error( $check ) || 200 !== (int) wp_remote_retrieve_response_code( $check ) ) {
+		lioness_paypal_log( 'could not reach PayPal to check it — PayPal will send it again', $ipn );
+		return new WP_REST_Response( null, 503 );   // PayPal retries anything that is not a 200
+	}
+	if ( 'VERIFIED' !== trim( wp_remote_retrieve_body( $check ) ) ) {
+		lioness_paypal_log( 'rejected — PayPal did not recognise it', $ipn );
+		return new WP_REST_Response( null, 200 );
+	}
+
+	$get = function ( $k ) use ( $ipn ) {
+		return isset( $ipn[ $k ] ) ? trim( (string) $ipn[ $k ] ) : '';
+	};
+
+	if ( 'Completed' !== $get( 'payment_status' ) ) {
+		lioness_paypal_log( 'ignored — payment status is ' . ( $get( 'payment_status' ) ? $get( 'payment_status' ) : 'not a payment' ), $ipn );
+		return new WP_REST_Response( null, 200 );
+	}
+
+	$own = strtolower( (string) lioness_opt( 'paypal_email', '' ) );
+	if ( '' !== $own && ! in_array( $own, array( strtolower( $get( 'receiver_email' ) ), strtolower( $get( 'business' ) ) ), true ) ) {
+		lioness_paypal_log( 'ignored — paid to ' . $get( 'receiver_email' ) . ', not this account', $ipn );
+		return new WP_REST_Response( null, 200 );
+	}
+
+	$txn = $get( 'txn_id' );
+	if ( '' === $txn || lioness_enrollment_by( 'lp_paypal_txn', $txn, 'any' ) ) {
+		lioness_paypal_log( '' === $txn ? 'ignored — no transaction id' : 'already recorded', $ipn );
+		return new WP_REST_Response( null, 200 );
+	}
+
+	// Which buyer is this? Their reference, if they pasted it into the note...
+	$ref = '';
+	foreach ( array( 'memo', 'custom', 'invoice', 'item_name', 'item_number', 'transaction_subject' ) as $k ) {
+		if ( preg_match( '/\bLP-\d{4}-[A-Z0-9]{4,8}\b/i', $get( $k ), $m ) ) {
+			$ref = strtoupper( $m[0] );
+			break;
+		}
+	}
+	$post_id = $ref ? lioness_enrollment_by( 'lp_reference', $ref ) : 0;
+	// ...or the email they gave the page, if it is the one they paid with.
+	$payer = sanitize_email( $get( 'payer_email' ) );
+	if ( ! $post_id && is_email( $payer ) ) {
+		$post_id = lioness_enrollment_by( 'lp_email', $payer, 'pending' );
+	}
+
+	$amount = ( 'USD' === $get( 'mc_currency' ) ? '$' . $get( 'mc_gross' ) : trim( $get( 'mc_gross' ) . ' ' . $get( 'mc_currency' ) ) );
+
+	// Already confirmed on the page and already invoiced: note the payment, send nothing twice.
+	if ( $post_id && 'publish' === get_post_status( $post_id ) ) {
+		update_post_meta( $post_id, 'lp_paypal_txn', $txn );
+		update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
+		if ( '' === (string) get_post_meta( $post_id, 'lp_transaction', true ) ) {
+			update_post_meta( $post_id, 'lp_transaction', $txn );
+		}
+		lioness_paypal_log( 'matched ' . get_post_meta( $post_id, 'lp_reference', true ) . ' — already invoiced', $ipn );
+		return new WP_REST_Response( null, 200 );
+	}
+
+	$meta = function ( $k ) use ( $post_id ) {
+		return $post_id ? (string) get_post_meta( $post_id, 'lp_' . $k, true ) : '';
+	};
+	$payer_name = trim( $get( 'first_name' ) . ' ' . $get( 'last_name' ) );
+	if ( '' === $payer_name ) {
+		$payer_name = $get( 'payer_business_name' ) ? $get( 'payer_business_name' ) : $payer;
+	}
+	if ( '' === $ref ) {
+		$ref = $meta( 'reference' );
+	}
+	if ( '' === $ref ) {
+		$ref = 'LP-' . wp_date( 'ym' ) . '-' . strtoupper( wp_generate_password( 4, false, false ) );
+	}
+
+	$data = array(
+		'name'        => $meta( 'name' ) ? $meta( 'name' ) : $payer_name,
+		'email'       => $meta( 'email' ) ? $meta( 'email' ) : $payer,
+		'snapchat'    => $meta( 'snapchat' ),
+		'reference'   => $ref,
+		'invoice_no'  => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
+		'course'      => lioness_course_name(),
+		'course_note' => lioness_course_note(),
+		'amount'      => $amount,
+		'method'      => 'PayPal',
+		'transaction' => $txn,
+		'date'        => date_i18n( 'd M Y, H:i' ),
+		'has_proof'   => false,
+		'verified'    => true,
+	);
+	if ( ! is_email( $data['email'] ) ) {
+		lioness_paypal_log( 'recorded nothing — PayPal gave no email for the payer', $ipn );
+		return new WP_REST_Response( null, 200 );
+	}
+
+	$record = array(
+		'post_type'   => 'lp_enrollment',
+		'post_status' => 'publish',
+		'post_title'  => $ref . ' — ' . $data['name'],
+	);
+	if ( $post_id ) {
+		$record['ID'] = $post_id;
+		$post_id      = wp_update_post( $record, true );
+	} else {
+		$post_id = wp_insert_post( $record, true );
+	}
+	if ( ! $post_id || is_wp_error( $post_id ) ) {
+		lioness_paypal_log( 'could not save it — PayPal will send it again', $ipn );
+		return new WP_REST_Response( null, 500 );
+	}
+	foreach ( array( 'name', 'email', 'snapchat', 'reference', 'amount', 'method', 'transaction' ) as $k ) {
+		update_post_meta( $post_id, 'lp_' . $k, $data[ $k ] );
+	}
+	update_post_meta( $post_id, 'lp_paypal_txn', $txn );
+	update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
+	if ( $payer && $payer !== $data['email'] ) {
+		update_post_meta( $post_id, 'lp_paypal_payer', $payer );
+	}
+
+	lioness_send_invoice( (int) $post_id, $data );
+	lioness_paypal_log( 'recorded ' . $ref . ' and sent the invoice to ' . $data['email'], $ipn );
+	return new WP_REST_Response( null, 200 );
 }
 
 /**
@@ -916,30 +1148,35 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		}
 	}
 
-	$copies = lioness_copy_list();
+	$sent_buyer = lioness_send_invoice( (int) $post_id, $data, $proof_file );
+
+	return new WP_REST_Response(
+		array( 'ok' => (bool) $sent_buyer, 'reference' => $data['reference'] ),
+		$sent_buyer ? 200 : 502
+	);
+}
+
+/** Mails the invoice to the buyer and to Lioness Prime. True when the buyer's copy was accepted. */
+function lioness_send_invoice( $post_id, array $data, $proof_file = '' ) {
 	update_option( 'lioness_mailing_enrollment', (int) $post_id, false );
 
 	$sent_buyer = wp_mail(
-		$email,
+		$data['email'],
 		sprintf( 'Your Lioness Prime Course invoice — %s', $data['reference'] ),
 		lioness_invoice_html( $data, false ),
-		lioness_headers( lioness_merchant_email(), $copies )
+		lioness_headers( lioness_merchant_email(), lioness_copy_list() )
 	);
 
 	wp_mail(
 		lioness_merchant_email(),
 		sprintf( 'New enrollment — %s (%s)', $data['name'], $data['reference'] ),
 		lioness_invoice_html( $data, true ),
-		lioness_headers( $email, lioness_copy_email() ),
+		lioness_headers( $data['email'], lioness_copy_email() ),
 		$proof_file ? array( lioness_proof_dir() . '/' . $proof_file ) : array()
 	);
 
 	delete_option( 'lioness_mailing_enrollment' );
-
-	return new WP_REST_Response(
-		array( 'ok' => (bool) $sent_buyer, 'reference' => $data['reference'] ),
-		$sent_buyer ? 200 : 502
-	);
+	return (bool) $sent_buyer;
 }
 
 function lioness_headers( $reply_to, $bcc = '' ) {
@@ -970,9 +1207,14 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 			esc_html( $v ) . '</strong></td></tr>';
 	};
 
-	$first = explode( ' ', $d['name'] );
-	$intro = $for_merchant
-		? '<p style="margin:0 0 18px;color:#53475D;font-size:15px">A new enrollment came in through the course page. The buyer has been sent this same invoice. Their payment screenshot is attached.</p>'
+	$first  = explode( ' ', $d['name'] );
+	$paypal = ! empty( $d['verified'] );
+	$intro  = $for_merchant
+		? '<p style="margin:0 0 18px;color:#53475D;font-size:15px">'
+			. ( $paypal
+				? 'PayPal reported this payment to the site. The buyer has been sent this same invoice.'
+				: 'A new enrollment came in through the course page. The buyer has been sent this same invoice. Their payment screenshot is attached.' )
+			. '</p>'
 		: '<p style="margin:0 0 18px;color:#53475D;font-size:15px">Thank you for joining the Lioness Prime Course, ' . esc_html( $first[0] ) . '. Here is your invoice — please keep it. Your access is opened once we confirm the payment against your reference, normally within 24 hours.</p>';
 
 	// The screenshot is never linked: that URL is only for signed-in staff.
@@ -998,12 +1240,14 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 		. $proof_line
 		. '</table>'
 		. '<div style="margin:20px 0 0;padding:16px 18px;background:#FAF6EA;border:1px solid #E8DCBE;font-size:13.5px;color:#6A5417">'
-		. 'Status: payment submitted, pending confirmation. This invoice records the purchase; it is not confirmation that the funds have cleared.'
+		. ( $paypal
+			? 'Status: paid. PayPal has confirmed this payment.'
+			: 'Status: payment submitted, pending confirmation. This invoice records the purchase; it is not confirmation that the funds have cleared.' )
 		. '</div>'
 		. '<table style="width:100%;border-collapse:collapse;margin-top:22px;border-top:1px solid #E5E0EA">'
 		. $row( 'Name', $d['name'] )
 		. $row( 'Email', $d['email'] )
-		. $row( 'Snapchat', $d['snapchat'] )
+		. $row( 'Snapchat', '' !== (string) $d['snapchat'] ? $d['snapchat'] : 'not given' )
 		. '</table>'
 		. '</div></div></div>';
 }
@@ -1472,7 +1716,7 @@ function lioness_sanitize_settings( $input ) {
 		$v = isset( $in[ $k ] ) ? trim( (string) $in[ $k ] ) : '';
 		$out[ $k ] = ( '' === $v || preg_match( '/^[0-9]+(\.[0-9]{1,3})?$/', $v ) ) ? $v : lioness_opt( $k, '' );
 	}
-	foreach ( array( 'merchant_email', 'copy_email', 'from_email' ) as $k ) {
+	foreach ( array( 'merchant_email', 'copy_email', 'from_email', 'paypal_email' ) as $k ) {
 		$v = isset( $in[ $k ] ) ? sanitize_email( trim( (string) $in[ $k ] ) ) : '';
 		$out[ $k ] = ( '' === $v || is_email( $v ) ) ? $v : lioness_opt( $k, '' );
 	}
@@ -1538,6 +1782,23 @@ function lioness_settings_page() {
 					<button type="submit" class="button">Send a test email now</button>
 				</form>
 			</td></tr>
+			<tr><td>PayPal notification URL</td><td><code><?php echo esc_html( lioness_paypal_url() ); ?></code>
+				<p class="description" style="margin:6px 0 0">In PayPal: Account Settings &rarr; Notifications &rarr; Instant payment notifications &rarr; Update. Paste this URL and choose <em>Receive IPN messages (Enabled)</em>.</p></td></tr>
+			<tr><td>Last PayPal notification</td><td>
+				<?php
+				$pl = get_option( 'lioness_paypal_log', array() );
+				if ( empty( $pl ) ) {
+					echo '<span style="color:#B03A4E;font-weight:600">none received yet</span>';
+				} else {
+					echo '<table style="border-collapse:collapse">';
+					foreach ( array_slice( $pl, 0, 8 ) as $e ) {
+						echo '<tr><td style="padding:2px 12px 2px 0;white-space:nowrap">' . esc_html( human_time_diff( (int) $e['at'] ) ) . ' ago</td><td style="padding:2px 12px 2px 0">'
+							. esc_html( $e['amount'] ) . '</td><td style="padding:2px 12px 2px 0">' . esc_html( $e['payer'] ) . '</td><td>' . esc_html( $e['status'] ) . '</td></tr>';
+					}
+					echo '</table>';
+				}
+				?>
+			</td></tr>
 			<tr><td>Enrollments recorded</td><td><?php echo (int) $h['enrollments']; ?></td></tr>
 			<tr><td>Screenshots stored</td><td><?php echo esc_html( $h['proof_used'] ); ?></td></tr>
 			<tr><td>Latest published version</td><td>
@@ -1569,6 +1830,10 @@ function lioness_settings_page() {
 				<tr><th scope="row"><label for="lp_pp">PayPal payment link</label></th>
 					<td><input name="lioness_settings[paypal_link]" id="lp_pp" type="url" class="large-text"
 						value="<?php echo esc_attr( lioness_opt( 'paypal_link', '' ) ); ?>" placeholder="https://www.paypal.com/ncp/payment/…"></td></tr>
+				<tr><th scope="row"><label for="lp_ppe">PayPal account email</label></th>
+					<td><input name="lioness_settings[paypal_email]" id="lp_ppe" type="email" class="regular-text"
+						value="<?php echo esc_attr( lioness_opt( 'paypal_email', '' ) ); ?>" placeholder="the address payments are sent to">
+					<p class="description">Optional. When set, PayPal notifications for payments to any other account are ignored.</p></td></tr>
 				<tr><th scope="row"><label for="lp_me">Enrollments go to</label></th>
 					<td><input name="lioness_settings[merchant_email]" id="lp_me" type="email" class="regular-text"
 						value="<?php echo esc_attr( lioness_opt( 'merchant_email', '' ) ); ?>" placeholder="<?php echo esc_attr( LIONESS_MERCHANT_EMAIL ); ?>"></td></tr>
