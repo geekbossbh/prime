@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.4.0.
+ * Lioness Prime — core, version 2.5.0.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.4.0' );
+define( 'LIONESS_VERSION', '2.5.0' );
 
 /**
  * The plugin's own directory and URL.
@@ -680,6 +680,20 @@ add_action( 'rest_api_init', function () {
 			'permission_callback' => '__return_true',
 		),
 	) );
+	register_rest_route( 'lioness/v1', '/intent', array(
+		array(
+			'methods'             => 'POST',
+			'callback'            => 'lioness_handle_intent',
+			'permission_callback' => '__return_true',
+		),
+		array(
+			'methods'             => 'OPTIONS',
+			'callback'            => function () {
+				return new WP_REST_Response( null, 204 );
+			},
+			'permission_callback' => '__return_true',
+		),
+	) );
 } );
 
 /** Origins permitted to post an enrollment: this site, plus any explicitly listed. */
@@ -721,6 +735,88 @@ add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
 function lioness_client_key() {
 	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown';
 	return 'lioness_rl_' . md5( $ip );
+}
+
+/** The enrollment still awaiting confirmation under this reference, or 0. */
+function lioness_pending_enrollment( $ref ) {
+	$ids = get_posts( array(
+		'post_type'      => 'lp_enrollment',
+		'post_status'    => 'pending',
+		'meta_key'       => 'lp_reference',
+		'meta_value'     => $ref,
+		'fields'         => 'ids',
+		'posts_per_page' => 1,
+		'no_found_rows'  => true,
+	) );
+	return $ids ? (int) $ids[0] : 0;
+}
+
+/**
+ * Records a buyer the moment they open a payment method, before they pay.
+ *
+ * Paying happens in another app, and a buyer who pays there and never comes back
+ * to confirm used to leave no trace here at all, so a payment could arrive with
+ * nobody able to say whose it was. This keeps their details under their
+ * reference as a pending enrollment; confirming turns the same record into a
+ * full one. Nothing is mailed from here, so it cannot be used to send anything.
+ */
+function lioness_handle_intent( WP_REST_Request $request ) {
+	$key   = lioness_client_key() . '_intent';
+	$count = (int) get_transient( $key );
+	if ( $count >= 3 * LIONESS_RATE_LIMIT ) {
+		return new WP_REST_Response( array( 'ok' => false, 'error' => 'rate_limited' ), 429 );
+	}
+	set_transient( $key, $count + 1, HOUR_IN_SECONDS );
+
+	if ( '' !== trim( (string) $request->get_param( 'website' ) ) ) {
+		return new WP_REST_Response( array( 'ok' => true ), 200 );
+	}
+
+	$clean = function ( $k, $max = 200 ) use ( $request ) {
+		return mb_substr( sanitize_text_field( (string) $request->get_param( $k ) ), 0, $max );
+	};
+
+	$email = sanitize_email( (string) $request->get_param( 'email' ) );
+	$ref   = preg_replace( '/[^A-Z0-9\-]/', '', strtoupper( $clean( 'reference', 40 ) ) );
+	$name  = $clean( 'customer_name', 120 );
+	if ( ! is_email( $email ) || '' === $ref || '' === $name ) {
+		return new WP_REST_Response( array( 'ok' => false, 'error' => 'invalid_input' ), 400 );
+	}
+
+	$method = ( 'PayPal' === $clean( 'method', 40 ) ) ? 'PayPal' : 'Benefit Pay';
+	$data   = array(
+		'name'      => $name,
+		'email'     => $email,
+		'snapchat'  => $clean( 'snapchat', 60 ),
+		'reference' => $ref,
+		'amount'    => ( 'PayPal' === $method ) ? '$' . lioness_price_usd() : lioness_price_bhd() . ' BHD',
+		'method'    => $method,
+	);
+
+	$post_id = lioness_pending_enrollment( $ref );
+	if ( ! $post_id ) {
+		// Already confirmed: that record is complete and is left alone.
+		$done = get_posts( array(
+			'post_type' => 'lp_enrollment', 'post_status' => 'publish', 'fields' => 'ids',
+			'meta_key' => 'lp_reference', 'meta_value' => $ref, 'posts_per_page' => 1, 'no_found_rows' => true,
+		) );
+		if ( $done ) {
+			return new WP_REST_Response( array( 'ok' => true ), 200 );
+		}
+		$post_id = wp_insert_post( array(
+			'post_type'   => 'lp_enrollment',
+			'post_status' => 'pending',
+			'post_title'  => $ref . ' — ' . $name,
+		), true );
+		if ( ! $post_id || is_wp_error( $post_id ) ) {
+			return new WP_REST_Response( array( 'ok' => false, 'error' => 'not_saved' ), 500 );
+		}
+	}
+	foreach ( $data as $k => $v ) {
+		update_post_meta( $post_id, 'lp_' . $k, $v );
+	}
+
+	return new WP_REST_Response( array( 'ok' => true ), 200 );
 }
 
 /**
@@ -797,11 +893,19 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	);
 
 	// Keep the record first, so an enrollment is never lost to a mail failure.
-	$post_id = wp_insert_post( array(
+	// A buyer recorded when they opened a payment method keeps that same record.
+	$record = array(
 		'post_type'   => 'lp_enrollment',
 		'post_status' => 'publish',
 		'post_title'  => $data['reference'] . ' — ' . $data['name'],
-	), true );
+	);
+	$pending = lioness_pending_enrollment( $ref );
+	if ( $pending ) {
+		$record['ID'] = $pending;
+		$post_id      = wp_update_post( $record, true );
+	} else {
+		$post_id = wp_insert_post( $record, true );
+	}
 
 	if ( $post_id && ! is_wp_error( $post_id ) ) {
 		foreach ( array( 'name', 'email', 'snapchat', 'reference', 'amount', 'method', 'transaction' ) as $k ) {
@@ -1254,7 +1358,9 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		return;
 	}
 	$err = (string) get_post_meta( $post_id, 'lp_mail_error', true );
-	if ( '' === $err ) {
+	if ( 'pending' === get_post_status( $post_id ) ) {
+		echo '<span style="color:#9A6A00" title="Opened a payment method but has not confirmed paying yet. Match the reference against your PayPal / BenefitPay payments.">not confirmed yet</span>';
+	} elseif ( '' === $err ) {
 		echo '<span style="color:#1D6B3F">sent</span>';
 	} else {
 		echo '<span style="color:#B03A4E" title="' . esc_attr( $err ) . '">failed</span>';
