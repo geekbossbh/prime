@@ -5,7 +5,7 @@
  *              buyer and to Lioness Prime when a payment is confirmed, and records every
  *              enrollment under Enrollments in the admin. Payment screenshots are kept out
  *              of the media library and served only to signed-in staff.
- * Version:     2.6.0
+ * Version:     2.6.1
  * Author:      Lioness Prime
  * License:     GPL-2.0-or-later
  */

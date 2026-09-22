@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.6.0.
+ * Lioness Prime — core, version 2.6.1.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.6.0' );
+define( 'LIONESS_VERSION', '2.6.1' );
 
 /**
  * The plugin's own directory and URL.
