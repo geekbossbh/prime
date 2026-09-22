@@ -774,7 +774,7 @@ const USD = () => money(CONFIG.price.usd, CONFIG.paypal.currency);
 let state = {
   step: 1, ref: '', fullName: '', email: '', snap: '',
   method: '', txn: '', paidAt: '', createdAt: '', emailed: false,
-  proofName: '', proofSize: 0
+  proofName: '', proofSize: 0, intent: ''
 };
 
 /* ---------- storage ---------- */
@@ -1148,6 +1148,7 @@ function paypalModal() {
   $('#ppCopy').addEventListener('click', armReference);
   $('#ppDone').addEventListener('click', () => confirmView('PayPal'));
   armReference();
+  recordIntent('PayPal');
 }
 
 /* ---------- Benefit Pay ---------- */
@@ -1194,6 +1195,7 @@ function benefitModal() {
   $('#bpDone').addEventListener('click', () => confirmView('Benefit Pay'));
   mountQR();
   armReference();
+  recordIntent('Benefit Pay');
 }
 
 /* QR: use the supplied image if it exists, otherwise generate one from qrData. */
@@ -1362,6 +1364,25 @@ function emailParams() {
   };
 }
 
+/* Tells the site who is about to pay, before they leave for PayPal or the
+   BenefitPay app. Someone who pays there and never comes back to confirm is
+   still on record under their reference, so their payment can be matched. */
+function recordIntent(method) {
+  if (CONFIG.email.provider !== 'wordpress' || !CONFIG.email.endpoint) return;
+  if (state.intent === state.ref + '|' + method) return;
+  fetchWithTimeout(CONFIG.email.endpoint.replace(/\/invoice$/, '/intent'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
+    body: JSON.stringify({
+      customer_name: state.fullName, email: state.email, snapchat: '@' + state.snap,
+      reference: state.ref, method, website: ''
+    })
+  }, 15000).then(res => {
+    if (res.ok) { state.intent = state.ref + '|' + method; save(); }
+  }).catch(() => {});
+}
+
 let sending = false, lastSend = 0;
 
 async function sendInvoiceEmail(manual) {
@@ -1508,6 +1529,9 @@ function restore() {
   if (state.step === 3 && state.method) {
     buildInvoice(); goStep(3, false);
     if (state.emailed) mailStatus('sent', `Invoice emailed to ${state.email}.`);
+    // Confirmed, but the send never finished — the page was closed or the
+    // connection dropped. Try again now rather than wait for a tap.
+    else sendInvoiceEmail(false);
   }
   else if (state.step === 2) goStep(2, false);
 }
