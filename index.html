@@ -241,6 +241,10 @@ section{padding:88px 0}
 .dropzone b{font-size:14.5px; font-weight:400; color:var(--ink)}
 .dropzone span{font-size:12.4px; color:var(--muted)}
 .field.bad .dropzone{border-color:#B03A4E; background:#FCF3F4}
+.how-to{margin:22px 0 0; padding:16px 18px; border:1px solid var(--gold-line); background:var(--gold-wash); font-size:14.4px; color:var(--ink)}
+.how-to ol{margin:10px 0 10px 20px; padding:0}
+.how-to li{margin:0 0 6px}
+.how-to p{margin:0; font-size:13.6px; color:var(--ink-soft)}
 .proof-preview{display:flex; align-items:center; gap:14px; padding:12px; border:1px solid var(--line)}
 .proof-preview img{width:52px; height:52px; object-fit:cover; flex:0 0 52px; border:1px solid var(--line)}
 .proof-preview .meta{min-width:0; flex:1}
@@ -497,15 +501,6 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
               <b id="sumName">—</b>
               <span id="sumContact">—</span>
             </div>
-            <div class="reftag">
-              <div>
-                <div class="k">Reference</div>
-                <div class="v" id="sumRef">—</div>
-              </div>
-              <button type="button" class="icon-btn" id="copyRef" title="Copy reference" aria-label="Copy reference number">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-              </button>
-            </div>
           </div>
 
           <h3 style="font-size:20px; margin-bottom:6px">Choose how to pay</h3>
@@ -550,9 +545,14 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
             </button>
           </div>
 
-          <div class="pay-note">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-            <span>Whichever you choose, add your reference <b class="mono" id="noteRef">—</b> in the payment note or remarks. It's how we match your payment to your enrollment.</span>
+          <div class="how-to">
+            <b>How to finish your enrollment</b>
+            <ol>
+              <li>Choose <b>PayPal</b> or <b>Benefit Pay</b> above and pay the amount shown.</li>
+              <li>Come back to <b>this page</b> and tap <b>“I've completed the payment”</b>.
+                Paying with Benefit Pay? Attach a screenshot of the payment too.</li>
+            </ol>
+            <p>Your details are already saved with us. Your reference number and invoice are issued as soon as your payment is confirmed, and emailed to you.</p>
           </div>
 
           <div class="form-foot">
@@ -778,7 +778,7 @@ const USD = () => money(CONFIG.price.usd, CONFIG.paypal.currency);
 let state = {
   step: 1, ref: '', fullName: '', email: '', snap: '',
   method: '', txn: '', paidAt: '', createdAt: '', emailed: false,
-  proofName: '', proofSize: 0, intent: ''
+  proofName: '', proofSize: 0, saved: ''
 };
 
 /* ---------- storage ---------- */
@@ -900,8 +900,6 @@ function goStep(n, scroll = true) {
 function paintStep2() {
   $('#sumName').textContent = state.fullName;
   $('#sumContact').textContent = `${state.email} · @${state.snap}`;
-  $('#sumRef').textContent = state.ref;
-  $('#noteRef').textContent = state.ref;
   $('#dueLine').textContent = `${BHD()} (Benefit Pay) or ${USD()} (PayPal)`;
 }
 
@@ -1020,11 +1018,9 @@ function closeModal() {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-const refRow = () => `
-  <div class="rowline">
-    <span class="k">Your reference</span>
-    <span class="v mono">${state.ref}</span>
-  </div>`;
+/* PayPal reports its payments to the site, so a screenshot is asked for only
+   with Benefit Pay, which cannot. */
+const proofNeeded = method => CONFIG.proof.required && method !== 'PayPal';
 
 /* the "I've paid" confirmation view, shared by both methods */
 function confirmView(method) {
@@ -1032,16 +1028,17 @@ function confirmView(method) {
     <div class="modal-top">
       <div>
         <h3>Confirm your payment</h3>
-        <p>Paid with ${method}? Attach your payment screenshot so we can confirm it quickly.</p>
+        <p>${proofNeeded(method)
+          ? `Paid with ${method}? Attach your payment screenshot so we can confirm it quickly.`
+          : `Paid with ${method}? Tap the button below to finish.`}</p>
       </div>
       <button class="modal-x" data-close aria-label="Close">×</button>
     </div>
     <div class="modal-body">
-      ${refRow()}
       <div class="rowline"><span class="k">Method</span><span class="v">${method}</span></div>
       <div class="rowline"><span class="k">Amount</span><span class="v">${method === 'PayPal' ? USD() : BHD()}</span></div>
       <div class="field" id="proofField" style="margin-top:20px">
-        <label for="proofIn">Screenshot of your payment ${CONFIG.proof.required ? '<span class="req">*</span>' : '<span style="color:var(--muted)">(optional)</span>'}</label>
+        <label for="proofIn">Screenshot of your payment ${proofNeeded(method) ? '<span class="req">*</span>' : '<span style="color:var(--muted)">(optional)</span>'}</label>
         <label class="dropzone" id="proofDrop" for="proofIn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
           <b>Tap to attach your payment screenshot</b>
@@ -1078,7 +1075,7 @@ function confirmView(method) {
 
   $('#confirmPaid').addEventListener('click', e => {
     if (e.currentTarget.dataset.busy === '1') return;
-    if (CONFIG.proof.required && !proof) {
+    if (proofNeeded(method) && !proof) {
       $('#proofErr').textContent = 'Please attach a screenshot of your payment.';
       $('#proofField').classList.add('bad');
       $('#proofDrop').scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -1097,13 +1094,6 @@ function confirmView(method) {
   });
 }
 
-/* The reference has to end up in a note field in another app, so it goes onto
-   the clipboard as soon as a payment method opens. The copy button stays too,
-   for anyone whose clipboard has moved on since. */
-function armReference() {
-  copy(state.ref, 'Reference copied — paste it in the payment note');
-}
-
 /* ---------- PayPal ---------- */
 function paypalModal() {
   openModal(`
@@ -1117,19 +1107,16 @@ function paypalModal() {
     <div class="modal-body">
       <div class="rowline"><span class="k">Course</span><span class="v">${CONFIG.course}</span></div>
       <div class="rowline"><span class="k">Amount</span><span class="v">${USD()}</span></div>
-      ${refRow()}
       <ol class="steps-ol">
-        <li>Tap the gold button below — PayPal opens in a secure window.</li>
-        <li>Pay with your card or PayPal balance.</li>
-        <li>Paste your reference <b class="mono">${state.ref}</b> into the note field — already copied for you.</li>
-        <li>Come back here and confirm — your invoice appears instantly.</li>
+        <li>Tap the gold button below. PayPal opens in a secure window.</li>
+        <li>Pay <b>${USD()}</b> with your card or PayPal balance.</li>
+        <li>Come back here and tap <b>“I've completed the payment”</b>. Your invoice appears straight away.</li>
       </ol>
       <div class="modal-foot">
         <button class="btn btn-gold btn-block" id="ppGo">
           Open secure PayPal window
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>
         </button>
-        <button class="btn btn-ghost btn-block" id="ppCopy">Copy my reference number</button>
         <button class="btn btn-purple btn-block" id="ppDone">I've completed the payment</button>
       </div>
       <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
@@ -1140,7 +1127,6 @@ function paypalModal() {
   $('#ppGo').addEventListener('click', e => {
     const release = busy(e.currentTarget, 'Opening PayPal…');
     setTimeout(release, 2500);
-    armReference();
     const w = 480, h = 760;
     const x = Math.max(0, (screen.width - w) / 2), y = Math.max(0, (screen.height - h) / 2);
     // note: 'noopener' must NOT go in the feature string — it forces a null return
@@ -1149,10 +1135,8 @@ function paypalModal() {
     if (win) { try { win.opener = null; } catch (e) {} }
     if (!win) toast('Allow pop-ups, or use the link at the bottom of this box.');
   });
-  $('#ppCopy').addEventListener('click', armReference);
   $('#ppDone').addEventListener('click', () => confirmView('PayPal'));
-  armReference();
-  recordIntent('PayPal');
+  saveSignup('PayPal');
 }
 
 /* ---------- Benefit Pay ---------- */
@@ -1178,16 +1162,14 @@ function benefitModal() {
         Loading the QR code…
       </div></div>
       <div class="rowline"><span class="k">Amount</span><span class="v">${BHD()}</span></div>
-      ${refRow()}
       ${manual}
       <ol class="steps-ol">
         <li>Open the <b>BenefitPay</b> app and choose <b>Scan</b>.</li>
         <li>Scan the code above and check the amount — <b>${BHD()}</b>.</li>
-        <li>Paste your reference <b class="mono">${state.ref}</b> in the remarks field — already copied for you.</li>
-        <li>Confirm the payment, then come back and tap the button below.</li>
+        <li>Confirm the payment and take a <b>screenshot</b> of the confirmation.</li>
+        <li>Come back here, tap <b>“I've completed the payment”</b> and attach the screenshot.</li>
       </ol>
       <div class="modal-foot">
-        <button class="btn btn-ghost btn-block" id="bpCopy">Copy my reference number</button>
         <button class="btn btn-gold btn-block" id="bpDone">I've completed the payment</button>
       </div>
       <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
@@ -1195,11 +1177,9 @@ function benefitModal() {
       </p>
     </div>`);
 
-  $('#bpCopy').addEventListener('click', armReference);
   $('#bpDone').addEventListener('click', () => confirmView('Benefit Pay'));
   mountQR();
-  armReference();
-  recordIntent('Benefit Pay');
+  saveSignup('Benefit Pay');
 }
 
 /* QR: use the supplied image if it exists, otherwise generate one from qrData. */
@@ -1368,13 +1348,18 @@ function emailParams() {
   };
 }
 
-/* Tells the site who is about to pay, before they leave for PayPal or the
-   BenefitPay app. Someone who pays there and never comes back to confirm is
-   still on record under their reference, so their payment can be matched. */
-function recordIntent(method) {
-  if (CONFIG.email.provider !== 'wordpress' || !CONFIG.email.endpoint) return;
-  if (state.intent === state.ref + '|' + method) return;
-  fetchWithTimeout(CONFIG.email.endpoint.replace(/\/invoice$/, '/intent'), {
+/* Saves the buyer with the site. Called when they submit their details, and
+   the payment options stay closed until it succeeds, so nobody can pay without
+   being on record. Called again with the method when they open one. Resolves
+   true once the site has confirmed it holds them. */
+function saveSignup(method = '') {
+  if (CONFIG.email.provider !== 'wordpress' || !CONFIG.email.endpoint) return Promise.resolve(true);
+  // Nothing to send if the site already holds these exact details (and method).
+  const who = [state.ref, state.fullName, state.email, state.snap].join('|');
+  const key = who + '|' + method;
+  const had = state.saved || '';
+  if (had === key || (method === '' && had.indexOf(who + '|') === 0)) return Promise.resolve(true);
+  return fetchWithTimeout(CONFIG.email.endpoint.replace(/\/invoice$/, '/intent'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     keepalive: true,
@@ -1382,9 +1367,10 @@ function recordIntent(method) {
       customer_name: state.fullName, email: state.email, snapchat: '@' + state.snap,
       reference: state.ref, method, website: ''
     })
-  }, 15000).then(res => {
-    if (res.ok) { state.intent = state.ref + '|' + method; save(); }
-  }).catch(() => {});
+  }, 15000).then(res => res.json().catch(() => ({})).then(body => {
+    if (res.ok && body.ok) { state.saved = key; save(); return true; }
+    return false;
+  })).catch(() => false);
 }
 
 let sending = false, lastSend = 0;
@@ -1503,18 +1489,24 @@ function wire() {
     const v = validate();
     if (!v) { const bad = $('.field.bad input'); if (bad) bad.focus(); return; }
     e.target.dataset.busy = '1';
-    const release = busy(e.target.querySelector('button[type="submit"]'), 'One moment…');
-    setTimeout(() => { e.target.dataset.busy = ''; release(); }, 450);
+    const release = busy(e.target.querySelector('button[type="submit"]'), 'Saving your details…');
     Object.assign(state, v);
     if (!state.ref) { state.ref = makeRef(); state.createdAt = new Date().toISOString(); }
-    save(); paintStep2(); goStep(2);
+    save();
+    saveSignup().then(ok => {
+      e.target.dataset.busy = ''; release();
+      if (!ok) {
+        toast("We couldn't save your details. Check your connection and tap Continue again.");
+        return;
+      }
+      paintStep2(); goStep(2);
+    });
   });
 
   $$('#detailsForm input').forEach(i =>
     i.addEventListener('input', () => i.closest('.field')?.classList.remove('bad')));
 
   $('#backTo1').addEventListener('click', () => goStep(1));
-  $('#copyRef').addEventListener('click', () => copy(state.ref, 'Reference copied'));
   $('#openPaypal').addEventListener('click', paypalModal);
   $('#openBenefit').addEventListener('click', benefitModal);
 
@@ -1550,7 +1542,7 @@ function restore() {
     // connection dropped. Try again now rather than wait for a tap.
     else sendInvoiceEmail(false);
   }
-  else if (state.step === 2) goStep(2, false);
+  else if (state.step === 2) { goStep(2, false); saveSignup(); }
 }
 
 paintStatic();
