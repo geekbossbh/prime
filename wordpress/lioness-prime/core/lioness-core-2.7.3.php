@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.7.2.
+ * Lioness Prime — core, version 2.7.3.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.7.2' );
+define( 'LIONESS_VERSION', '2.7.3' );
 
 /**
  * The plugin's own directory and URL.
@@ -407,6 +407,8 @@ function lioness_apply_settings_to_page( $html, $base ) {
 add_action( 'init', function () {
 	register_post_type( 'lp_enrollment', array(
 		'label'           => 'Enrollments',
+		'labels'          => array( 'name' => 'Enrollments', 'singular_name' => 'Enrollment', 'add_new' => 'Add enrollment',
+			'add_new_item' => 'Add enrollment', 'edit_item' => 'Edit enrollment', 'all_items' => 'Enrollments' ),
 		'public'          => false,      // never a front-end URL
 		'publicly_queryable' => false,
 		'exclude_from_search' => true,
@@ -424,7 +426,7 @@ add_action( 'init', function () {
 		'menu_icon'       => 'dashicons-tickets-alt',
 		'capability_type' => 'post',
 		'map_meta_cap'    => true,
-		'supports'        => array( 'title' ),
+		'supports'        => array( 'title', 'custom-fields' ),   // custom-fields: lets the lp_ fields travel over REST
 	) );
 } );
 
@@ -444,7 +446,9 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		return esc_html( (string) get_post_meta( $post_id, $k, true ) );
 	};
 	if ( 'lp_who' === $col ) {
-		echo $get( 'lp_name' ) . '<br><small>' . $get( 'lp_email' ) . ' &middot; ' . $get( 'lp_snapchat' ) . '</small>';
+		$snap = $get( 'lp_snapchat' );
+		echo $get( 'lp_name' ) . '<br><small>' . $get( 'lp_email' ) . ' &middot; '
+			. ( '' !== $snap ? $snap : '<span style="color:#B03A4E;font-weight:600">Snapchat missing</span>' ) . '</small>';
 	} elseif ( 'lp_pay' === $col ) {
 		$txn = $get( 'lp_transaction' );
 		echo $get( 'lp_method' ) . '<br><small>' . $get( 'lp_amount' ) . ( '' !== $txn ? ' &middot; ' . $txn : '' ) . '</small>';
@@ -461,6 +465,24 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		}
 	}
 }, 10, 2 );
+
+/**
+ * The enrollment's own fields over REST, so a record can be looked at or put
+ * right from outside the admin screens. Only someone signed in who can edit the
+ * enrollment gets them; the filter below refuses everyone else outright.
+ */
+add_action( 'init', function () {
+	foreach ( array( 'name', 'email', 'snapchat', 'reference', 'amount', 'method', 'transaction', 'status', 'paid', 'paypal_txn' ) as $k ) {
+		register_post_meta( 'lp_enrollment', 'lp_' . $k, array(
+			'type'          => 'string',
+			'single'        => true,
+			'show_in_rest'  => true,
+			'auth_callback' => function ( $allowed, $key, $post_id ) {
+				return current_user_can( 'edit_post', $post_id );
+			},
+		) );
+	}
+} );
 
 /** Enrollment records are never served to a caller who is not signed in. */
 add_filter( 'rest_pre_dispatch', function ( $result, $server, $request ) {
@@ -1280,6 +1302,13 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 			? esc_html( ! empty( $d['status_line'] ) ? $d['status_line'] : 'Status: paid.' )
 			: 'Status: payment submitted, pending confirmation. This invoice records the purchase; it is not confirmation that the funds have cleared.' )
 		. '</div>'
+		. ( '' === (string) $d['snapchat']
+			? '<div style="margin:12px 0 0;padding:16px 18px;background:#F5F1F8;border:1px solid #E1D8E8;font-size:14.5px;color:#2C1240">'
+				. ( $for_merchant
+					? '<strong>No Snapchat on record.</strong> The buyer has been asked to reply with it. Add it to their enrollment when it arrives.'
+					: '<strong>One step left:</strong> reply to this email with your <strong>Snapchat username</strong>. Your course access is given through Snapchat.' )
+				. '</div>'
+			: '' )
 		. '<table style="width:100%;border-collapse:collapse;margin-top:22px;border-top:1px solid #E5E0EA">'
 		. $row( 'Name', $d['name'] )
 		. $row( 'Email', $d['email'] )
@@ -1697,6 +1726,8 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 	$err = (string) get_post_meta( $post_id, 'lp_mail_error', true );
 	if ( '' !== $err ) {
 		echo '<br><small style="color:#B03A4E" title="' . esc_attr( $err ) . '">invoice email failed</small>';
+	} elseif ( ! is_email( (string) get_post_meta( $post_id, 'lp_email', true ) ) ) {
+		echo '<br><small style="color:#B03A4E;font-weight:600">no email, so no invoice</small>';
 	} elseif ( get_post_meta( $post_id, 'lp_invoiced', true ) || 'claimed' === $status ) {
 		echo '<br><small style="color:#1D6B3F">invoice sent</small>';
 	} else {
@@ -1754,7 +1785,9 @@ add_action( 'admin_post_lioness_mark_paid', function () {
 	update_post_meta( $post_id, 'lp_paid', $amount . ' — marked paid by ' . $user->display_name . ', ' . date_i18n( 'd M Y H:i' ) );
 
 	$sent = '';
-	if ( ! get_post_meta( $post_id, 'lp_invoiced', true ) ) {
+	if ( ! is_email( $meta( 'email' ) ) ) {
+		$sent = '&lp_noemail=1';   // paid, but nowhere to send the invoice yet
+	} elseif ( ! get_post_meta( $post_id, 'lp_invoiced', true ) ) {
 		$proof = $meta( 'proof_file' );
 		$ref   = $meta( 'reference' );
 		lioness_send_invoice( $post_id, array(
@@ -1815,6 +1848,9 @@ add_action( 'admin_notices', function () {
 	if ( ! $screen || 'edit-lp_enrollment' !== $screen->id ) {
 		return;
 	}
+	if ( isset( $_GET['lp_noemail'] ) ) {
+		echo '<div class="notice notice-warning is-dismissible"><p>There is no email on this enrollment, so no invoice was sent. Add the email under <em>Edit enrollment</em>, then press Mark as unpaid and Mark as paid to send it.</p></div>';
+	}
 	if ( isset( $_GET['lp_unmarked'] ) ) {
 		echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html( get_the_title( (int) $_GET['lp_unmarked'] ) ) . '</strong> is marked as unpaid. No email was sent.</p></div>';
 	}
@@ -1843,6 +1879,90 @@ add_action( 'admin_notices', function () {
 		. $tile( 'Paid', (int) ( $s['paid'] + $s['claimed'] ), '#1D6B3F', (int) $s['paid'] . ' confirmed · ' . (int) $s['claimed'] . ' need checking' )
 		. $tile( 'Received', $money ? implode( ' + ', $money ) : '0', '#A8842C', 'from paid enrollments' )
 		. '</div>';
+} );
+
+/* -------------------------------------------------------------------------
+ * Editing an enrollment
+ *
+ * Name, email and Snapchat can be corrected or filled in by hand, for a buyer
+ * whose details arrived incomplete, such as one who paid PayPal directly and
+ * then replied with their Snapchat. Payment status is changed only with Mark as
+ * paid / Mark as unpaid, never by the editor's Publish button.
+ * ---------------------------------------------------------------------- */
+
+add_action( 'add_meta_boxes_lp_enrollment', function ( $post ) {
+	remove_meta_box( 'postcustom', 'lp_enrollment', 'normal' );   // the raw field editor; Buyer details replaces it
+	add_meta_box( 'lp_buyer', 'Buyer details', function ( $post ) {
+		wp_nonce_field( 'lioness_buyer_' . $post->ID, 'lioness_buyer_nonce' );
+		$field = function ( $key, $label, $type = 'text' ) use ( $post ) {
+			printf(
+				'<p><label for="lp_f_%1$s" style="display:block;font-weight:600;margin-bottom:4px">%2$s</label>'
+				. '<input type="%3$s" id="lp_f_%1$s" name="lp_f[%1$s]" value="%4$s" class="regular-text"></p>',
+				esc_attr( $key ), esc_html( $label ), esc_attr( $type ),
+				esc_attr( (string) get_post_meta( $post->ID, 'lp_' . $key, true ) )
+			);
+		};
+		$field( 'name', 'Name' );
+		$field( 'email', 'Email', 'email' );
+		$field( 'snapchat', 'Snapchat username' );
+		$meta = function ( $k ) use ( $post ) {
+			return esc_html( (string) get_post_meta( $post->ID, 'lp_' . $k, true ) );
+		};
+		echo '<p style="color:#646970">Reference <strong>' . $meta( 'reference' ) . '</strong> &middot; '
+			. ( $meta( 'method' ) ? $meta( 'method' ) . ' &middot; ' . $meta( 'amount' ) . ' &middot; ' : '' )
+			. 'Payment status is changed with <em>Mark as paid</em> / <em>Mark as unpaid</em> in the Enrollments list.</p>';
+	}, 'lp_enrollment', 'normal', 'high' );
+} );
+
+add_action( 'save_post_lp_enrollment', function ( $post_id ) {
+	if ( wp_is_post_revision( $post_id ) || ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) ) {
+		return;
+	}
+
+	// One added by hand in the admin starts with a reference and as Unpaid.
+	if ( '' === (string) get_post_meta( $post_id, 'lp_reference', true ) ) {
+		update_post_meta( $post_id, 'lp_reference', 'LP-' . wp_date( 'ym' ) . '-' . strtoupper( wp_generate_password( 4, false, false ) ) );
+	}
+	if ( '' === (string) get_post_meta( $post_id, 'lp_status', true ) ) {
+		update_post_meta( $post_id, 'lp_status', 'publish' === get_post_status( $post_id ) ? 'claimed' : 'unpaid' );
+	}
+
+	// Everything below is for a save from the edit screen, and only that.
+	if ( empty( $_POST['lioness_buyer_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['lioness_buyer_nonce'] ) ), 'lioness_buyer_' . $post_id ) ) {
+		return;
+	}
+	if ( ! current_user_can( 'edit_post', $post_id ) || empty( $_POST['lp_f'] ) || ! is_array( $_POST['lp_f'] ) ) {
+		return;
+	}
+
+	// The editor's Publish button must not change who has paid: the status
+	// badge is the truth, and the post status is put back in step with it.
+	$status = (string) get_post_meta( $post_id, 'lp_status', true );
+	$want   = 'unpaid' === $status ? 'pending' : 'publish';
+	if ( get_post_status( $post_id ) !== $want ) {
+		global $wpdb;
+		$wpdb->update( $wpdb->posts, array( 'post_status' => $want ), array( 'ID' => $post_id ) );
+		clean_post_cache( $post_id );
+	}
+	$in    = wp_unslash( $_POST['lp_f'] );
+	$name  = isset( $in['name'] ) ? mb_substr( sanitize_text_field( $in['name'] ), 0, 120 ) : '';
+	$email = isset( $in['email'] ) ? sanitize_email( $in['email'] ) : '';
+	$snap  = isset( $in['snapchat'] ) ? mb_substr( sanitize_text_field( $in['snapchat'] ), 0, 60 ) : '';
+	if ( '' !== $snap && '@' !== $snap[0] ) {
+		$snap = '@' . $snap;
+	}
+	if ( '' !== $name ) {
+		update_post_meta( $post_id, 'lp_name', $name );
+		global $wpdb;
+		$wpdb->update( $wpdb->posts,
+			array( 'post_title' => get_post_meta( $post_id, 'lp_reference', true ) . ' — ' . $name ),
+			array( 'ID' => $post_id ) );
+		clean_post_cache( $post_id );
+	}
+	if ( is_email( $email ) ) {
+		update_post_meta( $post_id, 'lp_email', $email );
+	}
+	update_post_meta( $post_id, 'lp_snapchat', $snap );
 } );
 
 /** The badge already says Unpaid; WordPress's own "— Pending" beside the name is noise. */
