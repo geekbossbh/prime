@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.6.1.
+ * Lioness Prime — core, version 2.7.0.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.6.1' );
+define( 'LIONESS_VERSION', '2.7.0' );
 
 /**
  * The plugin's own directory and URL.
@@ -765,13 +765,14 @@ function lioness_pending_enrollment( $ref ) {
 }
 
 /**
- * Records a buyer the moment they open a payment method, before they pay.
+ * Records a buyer the moment they submit their details, before they can pay.
  *
  * Paying happens in another app, and a buyer who pays there and never comes back
- * to confirm used to leave no trace here at all, so a payment could arrive with
- * nobody able to say whose it was. This keeps their details under their
- * reference as a pending enrollment; confirming turns the same record into a
- * full one. Nothing is mailed from here, so it cannot be used to send anything.
+ * used to leave no trace here at all. The page does not show the payment options
+ * until this has answered, so nobody reaches a payment without being on record.
+ * The enrollment stays Unpaid until the payment is confirmed. Opening a payment
+ * method calls this again to note which one. The only mail sent from here is a
+ * sign-up alert to Lioness Prime's own addresses.
  */
 function lioness_handle_intent( WP_REST_Request $request ) {
 	$key   = lioness_client_key() . '_intent';
@@ -796,13 +797,14 @@ function lioness_handle_intent( WP_REST_Request $request ) {
 		return new WP_REST_Response( array( 'ok' => false, 'error' => 'invalid_input' ), 400 );
 	}
 
-	$method = ( 'PayPal' === $clean( 'method', 40 ) ) ? 'PayPal' : 'Benefit Pay';
+	$asked  = $clean( 'method', 40 );
+	$method = in_array( $asked, array( 'PayPal', 'Benefit Pay' ), true ) ? $asked : '';
 	$data   = array(
 		'name'      => $name,
 		'email'     => $email,
 		'snapchat'  => $clean( 'snapchat', 60 ),
 		'reference' => $ref,
-		'amount'    => ( 'PayPal' === $method ) ? '$' . lioness_price_usd() : lioness_price_bhd() . ' BHD',
+		'amount'    => '' === $method ? '' : lioness_amount_for( $method ),
 		'method'    => $method,
 	);
 
@@ -827,36 +829,44 @@ function lioness_handle_intent( WP_REST_Request $request ) {
 		}
 	}
 	foreach ( $data as $k => $v ) {
-		update_post_meta( $post_id, 'lp_' . $k, $v );
+		if ( '' !== $v || $is_new ) {   // a later call without a method keeps the one chosen
+			update_post_meta( $post_id, 'lp_' . $k, $v );
+		}
 	}
-
 	if ( $is_new ) {
-		lioness_alert_started( $data );
+		update_post_meta( $post_id, 'lp_status', 'unpaid' );
+		lioness_alert_signup( $data );
 	}
 
 	return new WP_REST_Response( array( 'ok' => true ), 200 );
 }
 
+/** What each method costs, as it is written on an invoice. */
+function lioness_amount_for( $method ) {
+	return 'PayPal' === $method ? '$' . lioness_price_usd() : lioness_price_bhd() . ' BHD';
+}
+
 /**
- * Tells Lioness Prime that someone has gone off to pay, so a payment that arrives
+ * Tells Lioness Prime that someone has signed up, so a payment that arrives
  * without a confirmation still has a name and an email beside it. Only ever
  * sent to Lioness Prime's own addresses, never to the address the caller gave.
  */
-function lioness_alert_started( array $d ) {
+function lioness_alert_signup( array $d ) {
 	$line = function ( $k, $v ) {
 		return '<tr><td style="padding:6px 16px 6px 0;color:#675D71">' . esc_html( $k ) . '</td><td><strong>' . esc_html( $v ) . '</strong></td></tr>';
 	};
 	wp_mail(
 		lioness_merchant_email(),
-		sprintf( 'Payment started — %s (%s, %s)', $d['name'], $d['reference'], $d['method'] ),
+		sprintf( 'New sign-up — %s (unpaid)', $d['name'] ),
 		'<div style="font:15px Helvetica,Arial,sans-serif;color:#191220">'
-		. '<p>Someone filled in the course form and has just opened <strong>' . esc_html( $d['method'] ) . '</strong> to pay.</p>'
+		. '<p>Someone has just filled in the course form and is going on to pay.</p>'
 		. '<table style="border-collapse:collapse">'
 		. $line( 'Name', $d['name'] ) . $line( 'Email', $d['email'] ) . $line( 'Snapchat', $d['snapchat'] )
-		. $line( 'Reference', $d['reference'] ) . $line( 'Amount', $d['amount'] )
+		. $line( 'Reference', $d['reference'] )
 		. '</table>'
-		. '<p style="color:#675D71">You will get the invoice as well once they confirm, or once PayPal reports the payment. '
-		. 'If a payment arrives and no invoice follows, this is who it came from. It is listed under Enrollments as "not confirmed yet".</p></div>',
+		. '<p style="color:#675D71">They are listed under Enrollments as <strong>Unpaid</strong>. '
+		. 'A PayPal payment marks them Paid by itself and sends the invoice. '
+		. 'For a Benefit Pay payment, they confirm on the page, or you press <strong>Mark as paid</strong> beside their name.</p></div>',
 		lioness_headers( $d['email'], lioness_copy_email() )
 	);
 }
@@ -974,6 +984,23 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 	if ( ! $post_id && is_email( $payer ) ) {
 		$post_id = lioness_enrollment_by( 'lp_email', $payer, 'pending' );
 	}
+	// ...or, paying from a different PayPal address, the one buyer who chose
+	// PayPal in the last six hours and has not paid. Two or more is a guess, so no.
+	if ( ! $post_id ) {
+		$recent = get_posts( array(
+			'post_type'      => 'lp_enrollment',
+			'post_status'    => 'pending',
+			'meta_key'       => 'lp_method',
+			'meta_value'     => 'PayPal',
+			'date_query'     => array( array( 'column' => 'post_date', 'after' => wp_date( 'Y-m-d H:i:s', time() - 6 * HOUR_IN_SECONDS ) ) ),
+			'fields'         => 'ids',
+			'posts_per_page' => 2,
+			'no_found_rows'  => true,
+		) );
+		if ( 1 === count( $recent ) ) {
+			$post_id = (int) $recent[0];
+		}
+	}
 
 	$amount = ( 'USD' === $get( 'mc_currency' ) ? '$' . $get( 'mc_gross' ) : trim( $get( 'mc_gross' ) . ' ' . $get( 'mc_currency' ) ) );
 
@@ -981,6 +1008,7 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 	if ( $post_id && 'publish' === get_post_status( $post_id ) ) {
 		update_post_meta( $post_id, 'lp_paypal_txn', $txn );
 		update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
+		update_post_meta( $post_id, 'lp_status', 'paid' );
 		if ( '' === (string) get_post_meta( $post_id, 'lp_transaction', true ) ) {
 			update_post_meta( $post_id, 'lp_transaction', $txn );
 		}
@@ -1016,6 +1044,7 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 		'date'        => date_i18n( 'd M Y, H:i' ),
 		'has_proof'   => false,
 		'verified'    => true,
+		'status_line' => 'Status: paid. PayPal has confirmed this payment.',
 	);
 	if ( ! is_email( $data['email'] ) ) {
 		lioness_paypal_log( 'recorded nothing — PayPal gave no email for the payer', $ipn );
@@ -1042,6 +1071,7 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 	}
 	update_post_meta( $post_id, 'lp_paypal_txn', $txn );
 	update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
+	update_post_meta( $post_id, 'lp_status', 'paid' );
 	if ( $payer && $payer !== $data['email'] ) {
 		update_post_meta( $post_id, 'lp_paypal_payer', $payer );
 	}
@@ -1146,6 +1176,9 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		if ( $proof_file ) {
 			update_post_meta( $post_id, 'lp_proof_file', $proof_file );
 		}
+		if ( 'paid' !== get_post_meta( $post_id, 'lp_status', true ) ) {
+			update_post_meta( $post_id, 'lp_status', 'claimed' );
+		}
 	}
 
 	$sent_buyer = lioness_send_invoice( (int) $post_id, $data, $proof_file );
@@ -1176,6 +1209,9 @@ function lioness_send_invoice( $post_id, array $data, $proof_file = '' ) {
 	);
 
 	delete_option( 'lioness_mailing_enrollment' );
+	if ( $post_id ) {
+		update_post_meta( $post_id, 'lp_invoiced', time() );
+	}
 	return (bool) $sent_buyer;
 }
 
@@ -1212,7 +1248,7 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 	$intro  = $for_merchant
 		? '<p style="margin:0 0 18px;color:#53475D;font-size:15px">'
 			. ( $paypal
-				? 'PayPal reported this payment to the site. The buyer has been sent this same invoice.'
+				? ( ! empty( $d['merchant_line'] ) ? esc_html( $d['merchant_line'] ) : 'PayPal reported this payment to the site. The buyer has been sent this same invoice.' )
 				: 'A new enrollment came in through the course page. The buyer has been sent this same invoice. Their payment screenshot is attached.' )
 			. '</p>'
 		: '<p style="margin:0 0 18px;color:#53475D;font-size:15px">Thank you for joining the Lioness Prime Course, ' . esc_html( $first[0] ) . '. Here is your invoice — please keep it. Your access is opened once we confirm the payment against your reference, normally within 24 hours.</p>';
@@ -1241,7 +1277,7 @@ function lioness_invoice_html( array $d, $for_merchant ) {
 		. '</table>'
 		. '<div style="margin:20px 0 0;padding:16px 18px;background:#FAF6EA;border:1px solid #E8DCBE;font-size:13.5px;color:#6A5417">'
 		. ( $paypal
-			? 'Status: paid. PayPal has confirmed this payment.'
+			? esc_html( ! empty( $d['status_line'] ) ? $d['status_line'] : 'Status: paid.' )
 			: 'Status: payment submitted, pending confirmation. This invoice records the purchase; it is not confirmation that the funds have cleared.' )
 		. '</div>'
 		. '<table style="width:100%;border-collapse:collapse;margin-top:22px;border-top:1px solid #E5E0EA">'
@@ -1592,24 +1628,203 @@ add_action( 'wp_mail_failed', function ( $error ) {
 	}
 } );
 
+/* -------------------------------------------------------------------------
+ * Payment status
+ *
+ * Every enrollment is exactly one of:
+ *   unpaid   signed up, no payment confirmed yet            (post status: pending)
+ *   claimed  the buyer says they paid, not yet checked      (post status: publish)
+ *   paid     PayPal confirmed it, or Lioness Prime marked it (post status: publish)
+ * ---------------------------------------------------------------------- */
+
+function lioness_pay_status( $post_id ) {
+	if ( 'pending' === get_post_status( $post_id ) ) {
+		return 'unpaid';
+	}
+	return 'paid' === get_post_meta( $post_id, 'lp_status', true ) ? 'paid' : 'claimed';
+}
+
+function lioness_mark_paid_url( $post_id ) {
+	return wp_nonce_url(
+		admin_url( 'admin-post.php?action=lioness_mark_paid&post=' . (int) $post_id ),
+		'lioness_mark_paid_' . (int) $post_id
+	);
+}
+
 add_filter( 'manage_lp_enrollment_posts_columns', function ( $cols ) {
-	$cols['lp_mail'] = 'Email';
-	return $cols;
+	$out = array();
+	foreach ( $cols as $k => $v ) {
+		$out[ $k ] = $v;
+		if ( 'title' === $k ) {
+			$out['lp_status'] = 'Payment status';
+		}
+	}
+	return $out;
 }, 20 );
 
 add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_id ) {
-	if ( 'lp_mail' !== $col ) {
+	if ( 'lp_status' !== $col ) {
 		return;
 	}
-	$err = (string) get_post_meta( $post_id, 'lp_mail_error', true );
-	if ( 'pending' === get_post_status( $post_id ) ) {
-		echo '<span style="color:#9A6A00" title="Opened a payment method but has not confirmed paying yet. Match the reference against your PayPal / BenefitPay payments.">not confirmed yet</span>';
-	} elseif ( '' === $err ) {
-		echo '<span style="color:#1D6B3F">sent</span>';
+	$status = lioness_pay_status( $post_id );
+	$badge  = function ( $text, $fg, $bg ) {
+		return '<span style="display:inline-block;padding:3px 9px;border-radius:3px;font-weight:600;color:' . $fg . ';background:' . $bg . '">' . $text . '</span>';
+	};
+	if ( 'paid' === $status ) {
+		echo $badge( 'Paid &#10003;', '#fff', '#1D6B3F' );
+	} elseif ( 'claimed' === $status ) {
+		echo $badge( 'Paid, needs checking', '#6A5417', '#F6E7B8' );
+		echo '<br><small>Buyer confirmed on the page. Check the payment arrived.</small>';
 	} else {
-		echo '<span style="color:#B03A4E" title="' . esc_attr( $err ) . '">failed</span>';
+		echo $badge( 'Unpaid', '#fff', '#B03A4E' );
+	}
+	if ( 'paid' !== $status && current_user_can( 'edit_post', $post_id ) ) {
+		echo '<br><a class="button button-small" style="margin-top:6px" href="' . esc_url( lioness_mark_paid_url( $post_id ) ) . '"'
+			. ' onclick="return confirm(\'Mark this enrollment as paid' . ( get_post_meta( $post_id, 'lp_invoiced', true ) ? '' : ' and email the invoice' ) . '?\')">Mark as paid</a>';
+	}
+
+	$err = (string) get_post_meta( $post_id, 'lp_mail_error', true );
+	if ( '' !== $err ) {
+		echo '<br><small style="color:#B03A4E" title="' . esc_attr( $err ) . '">invoice email failed</small>';
+	} elseif ( get_post_meta( $post_id, 'lp_invoiced', true ) || 'claimed' === $status ) {
+		echo '<br><small style="color:#1D6B3F">invoice sent</small>';
+	} else {
+		echo '<br><small style="color:#8a8190">no invoice yet</small>';
 	}
 }, 20, 2 );
+
+add_filter( 'post_row_actions', function ( $actions, $post ) {
+	if ( 'lp_enrollment' === $post->post_type && 'paid' !== lioness_pay_status( $post->ID ) && current_user_can( 'edit_post', $post->ID ) ) {
+		$actions['lp_mark_paid'] = '<a href="' . esc_url( lioness_mark_paid_url( $post->ID ) ) . '">Mark as paid</a>';
+	}
+	return $actions;
+}, 10, 2 );
+
+/** Marks an enrollment paid, and sends the invoice if it has not gone yet. */
+add_action( 'admin_post_lioness_mark_paid', function () {
+	$post_id = isset( $_GET['post'] ) ? (int) $_GET['post'] : 0;
+	check_admin_referer( 'lioness_mark_paid_' . $post_id );
+	if ( ! $post_id || 'lp_enrollment' !== get_post_type( $post_id ) || ! current_user_can( 'edit_post', $post_id ) ) {
+		wp_die( 'Not allowed.' );
+	}
+
+	$meta = function ( $k ) use ( $post_id ) {
+		return (string) get_post_meta( $post_id, 'lp_' . $k, true );
+	};
+	$method = '' !== $meta( 'method' ) ? $meta( 'method' ) : 'Benefit Pay';
+	$amount = '' !== $meta( 'amount' ) ? $meta( 'amount' ) : lioness_amount_for( $method );
+	$user   = wp_get_current_user();
+
+	wp_update_post( array( 'ID' => $post_id, 'post_status' => 'publish' ) );
+	update_post_meta( $post_id, 'lp_method', $method );
+	update_post_meta( $post_id, 'lp_amount', $amount );
+	update_post_meta( $post_id, 'lp_status', 'paid' );
+	update_post_meta( $post_id, 'lp_paid', $amount . ' — marked paid by ' . $user->display_name . ', ' . date_i18n( 'd M Y H:i' ) );
+
+	$sent = '';
+	if ( ! get_post_meta( $post_id, 'lp_invoiced', true ) ) {
+		$proof = $meta( 'proof_file' );
+		$ref   = $meta( 'reference' );
+		lioness_send_invoice( $post_id, array(
+			'name'          => $meta( 'name' ),
+			'email'         => $meta( 'email' ),
+			'snapchat'      => $meta( 'snapchat' ),
+			'reference'     => $ref,
+			'invoice_no'    => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
+			'course'        => lioness_course_name(),
+			'course_note'   => lioness_course_note(),
+			'amount'        => $amount,
+			'method'        => $method,
+			'transaction'   => $meta( 'transaction' ),
+			'date'          => date_i18n( 'd M Y, H:i' ),
+			'has_proof'     => '' !== $proof,
+			'verified'      => true,
+			'status_line'   => 'Status: paid. Your payment has been received.',
+			'merchant_line' => 'Marked as paid in Enrollments. The buyer has been sent this same invoice.',
+		), $proof );
+		$sent = '&lp_invoiced=1';
+	}
+	wp_safe_redirect( admin_url( 'edit.php?post_type=lp_enrollment&lp_marked=' . $post_id . $sent ) );
+	exit;
+} );
+
+/** The paid and unpaid figures, above the list of enrollments. */
+function lioness_stats() {
+	$ids = get_posts( array(
+		'post_type'      => 'lp_enrollment',
+		'post_status'    => array( 'pending', 'publish' ),
+		'fields'         => 'ids',
+		'posts_per_page' => -1,
+		'no_found_rows'  => true,
+	) );
+	$s = array( 'total' => count( $ids ), 'unpaid' => 0, 'claimed' => 0, 'paid' => 0, 'usd' => 0.0, 'bhd' => 0.0, 'today' => 0 );
+	$midnight = strtotime( 'today', current_time( 'timestamp' ) );
+	foreach ( $ids as $id ) {
+		$st = lioness_pay_status( $id );
+		$s[ $st ]++;
+		if ( get_post_time( 'U', false, $id ) >= $midnight ) {
+			$s['today']++;
+		}
+		if ( 'unpaid' !== $st ) {
+			$amount = (string) get_post_meta( $id, 'lp_amount', true );
+			$num    = (float) preg_replace( '/[^0-9.]/', '', $amount );
+			if ( false !== stripos( $amount, 'BHD' ) ) {
+				$s['bhd'] += $num;
+			} else {
+				$s['usd'] += $num;
+			}
+		}
+	}
+	return $s;
+}
+
+add_action( 'admin_notices', function () {
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || 'edit-lp_enrollment' !== $screen->id ) {
+		return;
+	}
+	if ( isset( $_GET['lp_marked'] ) ) {
+		$id = (int) $_GET['lp_marked'];
+		echo '<div class="notice notice-success is-dismissible"><p><strong>' . esc_html( get_the_title( $id ) ) . '</strong> is marked as paid'
+			. ( isset( $_GET['lp_invoiced'] ) ? ' and the invoice has been emailed to ' . esc_html( get_post_meta( $id, 'lp_email', true ) ) . ' and to you' : '' ) . '.</p></div>';
+	}
+	$s    = lioness_stats();
+	$tile = function ( $label, $value, $color, $note = '' ) {
+		return '<div style="flex:1;min-width:140px;background:#fff;border:1px solid #dcdcde;border-top:4px solid ' . $color . ';padding:12px 16px">'
+			. '<div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#646970">' . $label . '</div>'
+			. '<div style="font-size:28px;font-weight:600;line-height:1.3;color:#1d2327">' . $value . '</div>'
+			. ( $note ? '<div style="font-size:12px;color:#646970">' . $note . '</div>' : '' ) . '</div>';
+	};
+	$money = array();
+	if ( $s['usd'] > 0 ) {
+		$money[] = '$' . number_format( $s['usd'], 2 );
+	}
+	if ( $s['bhd'] > 0 ) {
+		$money[] = rtrim( rtrim( number_format( $s['bhd'], 3 ), '0' ), '.' ) . ' BHD';
+	}
+	echo '<div style="display:flex;flex-wrap:wrap;gap:12px;margin:16px 0 8px">'
+		. $tile( 'Signed up', (int) $s['total'], '#2C1240', (int) $s['today'] . ' today' )
+		. $tile( 'Unpaid', (int) $s['unpaid'], '#B03A4E', 'signed up, no payment yet' )
+		. $tile( 'Paid', (int) ( $s['paid'] + $s['claimed'] ), '#1D6B3F', (int) $s['paid'] . ' confirmed · ' . (int) $s['claimed'] . ' need checking' )
+		. $tile( 'Received', $money ? implode( ' + ', $money ) : '0', '#A8842C', 'from paid enrollments' )
+		. '</div>';
+} );
+
+/** The badge already says Unpaid; WordPress's own "— Pending" beside the name is noise. */
+add_filter( 'display_post_states', function ( $states, $post ) {
+	if ( 'lp_enrollment' === $post->post_type ) {
+		unset( $states['pending'] );
+	}
+	return $states;
+}, 10, 2 );
+
+/** The list's own filters say Paid and Unpaid rather than Published and Pending. */
+add_filter( 'views_edit-lp_enrollment', function ( $views ) {
+	foreach ( $views as $k => $html ) {
+		$views[ $k ] = str_replace( array( 'Published', 'Pending' ), array( 'Paid', 'Unpaid' ), $html );
+	}
+	return $views;
+} );
 
 /* -------------------------------------------------------------------------
  * Mail diagnostics
