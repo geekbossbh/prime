@@ -168,37 +168,32 @@ section{padding:88px 0}
 .form-foot .note{font-size:12.5px; color:var(--muted); margin-left:auto; text-align:right}
 @media(max-width:620px){.field-grid{grid-template-columns:1fr}.form-foot .note{margin-left:0; text-align:left}}
 
-.sumbar{display:flex; flex-wrap:wrap; gap:18px; align-items:center; justify-content:space-between;
-  border:1px solid var(--line); padding:18px 20px; margin-bottom:28px; background:var(--cream)}
-.sumbar .who{font-size:13.5px; color:var(--muted); min-width:0}
-.sumbar .who b{display:block; color:var(--ink); font-size:16px; font-weight:400; font-family:'Playfair Display',serif}
-.sumbar .who span{word-break:break-word}
-.reftag{display:flex; align-items:center; gap:14px; background:var(--white);
-  border:1px solid var(--gold-line); padding:11px 15px}
-.reftag .k{font-size:9.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted)}
-.reftag .v{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px;
-  color:var(--purple-deep); letter-spacing:.06em; margin-top:2px}
-.icon-btn{border:1px solid var(--line); background:var(--white); border-radius:var(--r);
-  width:32px; height:32px; display:grid; place-items:center; cursor:pointer; color:var(--ink-soft);
-  transition:border-color .15s; flex:0 0 32px}
-.icon-btn:hover{border-color:var(--ink)}
-.icon-btn svg{width:14px; height:14px}
-
-.pay-grid{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border:1px solid var(--line)}
-@media(max-width:620px){.pay-grid{grid-template-columns:1fr}}
-.pay-opt{text-align:left; background:var(--white); border:0; padding:28px 26px; cursor:pointer;
-  display:flex; flex-direction:column; gap:13px; width:100%; transition:background .15s}
-.pay-opt:hover{background:var(--cream)}
-.pay-opt .logo-row{display:flex; align-items:center; justify-content:space-between; gap:12px}
-.pay-opt .mark{height:28px; display:flex; align-items:center}
-.pay-opt h4{margin:0; font-size:18px}
-.pay-opt p{margin:0; font-size:14px; color:var(--ink-soft)}
-.pay-opt .go{display:inline-flex; align-items:center; gap:8px; font-size:12px; letter-spacing:.14em;
-  text-transform:uppercase; color:var(--purple); margin-top:4px}
-.pay-opt .tagpill{font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
-.pay-note{display:flex; gap:12px; align-items:flex-start; margin-top:26px; padding:18px 20px;
-  background:var(--gold-wash); border:1px solid var(--gold-line); font-size:13.8px; color:#6A5417}
-.pay-note svg{width:16px; height:16px; flex:0 0 16px; margin-top:3px; color:var(--gold-deep)}
+.pick-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:16px}
+.pick-head h3{font-size:20px}
+.linkish{border:0; background:none; padding:0; font:inherit; font-size:13px; color:var(--muted);
+  text-decoration:underline; text-underline-offset:3px; cursor:pointer}
+.linkish:hover{color:var(--purple)}
+.paypick{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.pp-tile{display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0;
+  padding:18px 16px 16px; background:var(--white); border:1px solid var(--line); cursor:pointer;
+  text-align:left; font:inherit; color:var(--ink); transition:border-color .15s, box-shadow .15s}
+.pp-tile:hover,.pp-tile:focus-visible{border-color:var(--purple); box-shadow:0 0 0 3px var(--purple-wash); outline:0}
+.pp-logo{height:24px; display:flex; align-items:center; margin-bottom:10px}
+.pp-logo svg{height:22px; width:auto}
+.wm-benefit{font-family:'Playfair Display',Georgia,serif; font-weight:700; font-size:18px; color:var(--purple-deep); white-space:nowrap}
+.wm-benefit span{color:var(--gold)}
+.pp-price{font-family:'Playfair Display',Georgia,serif; font-size:25px; line-height:1.1; font-variant-numeric:tabular-nums}
+.pp-sub{font-size:12.5px; color:var(--muted)}
+.pp-hint{margin:14px 0 0; font-size:13px; color:var(--muted)}
+.pp-hint b{color:var(--ink); font-weight:500}
+.pay-head{display:flex; align-items:center; justify-content:space-between; gap:14px; padding:20px 22px 0}
+.pay-head .pp-logo{margin:0}
+.pay-sum{padding:14px 22px 0}
+.pay-sum .pp-price{font-size:30px}
+.pay-body{padding:16px 22px 22px; display:grid; gap:10px}
+.pay-body .line{margin:0 0 6px; font-size:13.8px; color:var(--ink-soft)}
+.pay-body .tiny{margin:4px 0 0; font-size:12.2px; color:var(--muted); text-align:center}
+.modal.modal-sm{max-width:400px}
 
 /* modal */
 .overlay{position:fixed; inset:0; z-index:100; display:grid; place-items:center; padding:18px;
@@ -241,10 +236,6 @@ section{padding:88px 0}
 .dropzone b{font-size:14.5px; font-weight:400; color:var(--ink)}
 .dropzone span{font-size:12.4px; color:var(--muted)}
 .field.bad .dropzone{border-color:#B03A4E; background:#FCF3F4}
-.how-to{margin:22px 0 0; padding:16px 18px; border:1px solid var(--gold-line); background:var(--gold-wash); font-size:14.4px; color:var(--ink)}
-.how-to ol{margin:10px 0 10px 20px; padding:0}
-.how-to li{margin:0 0 6px}
-.how-to p{margin:0; font-size:13.6px; color:var(--ink-soft)}
 .proof-preview{display:flex; align-items:center; gap:14px; padding:12px; border:1px solid var(--line)}
 .proof-preview img{width:52px; height:52px; object-fit:cover; flex:0 0 52px; border:1px solid var(--line)}
 .proof-preview .meta{min-width:0; flex:1}
@@ -496,72 +487,11 @@ footer.site .fine{width:100%; border-top:1px solid rgba(255,255,255,.14); margin
 
         <!-- STEP 2 -->
         <div class="panel" id="panel2" hidden>
-          <div class="sumbar">
-            <div class="who">
-              <b id="sumName">—</b>
-              <span id="sumContact">—</span>
-            </div>
+          <div class="pick-head">
+            <h3>Choose how to pay</h3>
+            <button type="button" class="linkish" id="backTo1">Edit my details</button>
           </div>
-
-          <h3 style="font-size:20px; margin-bottom:6px">Choose how to pay</h3>
-          <p style="margin:0 0 20px; color:var(--ink-soft); font-size:14.8px">
-            Amount due: <b id="dueLine">—</b>. Both options open right here on this page.
-          </p>
-
-          <div class="pay-grid">
-            <button type="button" class="pay-opt" id="openPaypal">
-              <span class="logo-row">
-                <span class="mark">
-                  <svg height="26" viewBox="0 0 101 32" aria-label="PayPal" role="img">
-                    <path fill="#002991" d="M12.2 4.4H6.1c-.4 0-.8.3-.9.7L2.8 21.7c0 .3.2.6.5.6h2.9c.4 0 .8-.3.9-.7l.7-4.4c.1-.4.4-.7.9-.7h1.9c4 0 6.4-2 7-5.8.3-1.7 0-3-.7-3.9-.9-1-2.4-1.5-4.7-1.5zm.7 5.7c-.3 2.2-2 2.2-3.6 2.2h-.9l.6-4c0-.2.2-.4.5-.4h.4c1.1 0 2.1 0 2.6.6.3.4.4.9.4 1.6z"/>
-                    <path fill="#002991" d="M30.3 10h-2.9c-.2 0-.5.2-.5.4l-.1.8-.2-.3c-.6-.9-2-1.2-3.4-1.2-3.2 0-5.9 2.4-6.4 5.8-.3 1.7.1 3.3 1.1 4.4.9 1 2.1 1.5 3.6 1.5 2.6 0 4-1.7 4-1.7l-.1.8c0 .3.2.6.5.6h2.6c.4 0 .8-.3.9-.7l1.6-9.8c0-.3-.2-.6-.5-.6zm-4.1 5.6c-.3 1.7-1.6 2.8-3.3 2.8-.8 0-1.5-.3-1.9-.8-.4-.5-.6-1.2-.4-2 .3-1.6 1.6-2.8 3.3-2.8.8 0 1.5.3 1.9.8.4.5.6 1.2.4 2z"/>
-                    <path fill="#002991" d="M45.8 10h-2.9c-.3 0-.5.1-.7.4l-4 5.8-1.7-5.6c-.1-.4-.4-.6-.8-.6h-2.8c-.3 0-.6.3-.5.7l3.2 9.3-3 4.2c-.2.3 0 .8.4.8h2.9c.3 0 .5-.1.7-.4l9.6-13.8c.2-.3 0-.8-.4-.8z"/>
-                    <path fill="#60CDFF" d="M55.6 4.4h-6.1c-.4 0-.8.3-.9.7l-2.4 16.6c0 .3.2.6.5.6h3.1c.3 0 .5-.2.6-.5l.7-4.6c.1-.4.4-.7.9-.7h1.9c4 0 6.4-2 7-5.8.3-1.7 0-3-.7-3.9-.9-1-2.4-1.4-4.6-1.4zm.7 5.7c-.3 2.2-2 2.2-3.6 2.2h-.9l.6-4c0-.2.2-.4.5-.4h.4c1.1 0 2.1 0 2.6.6.3.4.4.9.4 1.6z"/>
-                    <path fill="#60CDFF" d="M73.7 10h-2.9c-.2 0-.5.2-.5.4l-.1.8-.2-.3c-.6-.9-2-1.2-3.4-1.2-3.2 0-5.9 2.4-6.4 5.8-.3 1.7.1 3.3 1.1 4.4.9 1 2.1 1.5 3.6 1.5 2.6 0 4-1.7 4-1.7l-.1.8c0 .3.2.6.5.6h2.6c.4 0 .8-.3.9-.7l1.6-9.8c0-.3-.2-.6-.5-.6zm-4.1 5.6c-.3 1.7-1.6 2.8-3.3 2.8-.8 0-1.5-.3-1.9-.8-.4-.5-.6-1.2-.4-2 .3-1.6 1.6-2.8 3.3-2.8.8 0 1.5.3 1.9.8.4.5.6 1.2.4 2z"/>
-                    <path fill="#60CDFF" d="M77.1 4.9 74.7 21.7c0 .3.2.6.5.6h2.5c.4 0 .8-.3.9-.7l2.4-16.6c0-.3-.2-.6-.5-.6h-2.8c-.3 0-.5.2-.6.5z"/>
-                  </svg>
-                </span>
-                <span class="tagpill">Card or PayPal</span>
-              </span>
-              <h4>Pay with PayPal</h4>
-              <p>Cards, balance or PayPal Credit — in a secure PayPal window. Charged in <b id="ppCurLabel">USD</b>.</p>
-              <span class="go">Open PayPal checkout
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </span>
-            </button>
-
-            <button type="button" class="pay-opt" id="openBenefit">
-              <span class="logo-row">
-                <span class="mark">
-                  <span class="serif" style="font-size:19px; color:var(--purple-deep); font-weight:700; letter-spacing:.01em">Benefit<span class="gold-text"> Pay</span></span>
-                </span>
-                <span class="tagpill">Bahrain · BHD</span>
-              </span>
-              <h4>Scan &amp; pay</h4>
-              <p>Open BenefitPay, scan the QR on this page and confirm. Charged in <b id="bpCurLabel">BHD</b>.</p>
-              <span class="go">Show the QR code
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </span>
-            </button>
-          </div>
-
-          <div class="how-to">
-            <b>How to finish your enrollment</b>
-            <ol>
-              <li>Choose <b>PayPal</b> or <b>Benefit Pay</b> above and pay the amount shown.</li>
-              <li>Come back to <b>this page</b> and tap <b>“I've completed the payment”</b>.
-                Paying with Benefit Pay? Attach a screenshot of the payment too.</li>
-            </ol>
-            <p>Your details are already saved with us. Your reference number and invoice are issued as soon as your payment is confirmed, and emailed to you.</p>
-          </div>
-
-          <div class="form-foot">
-            <button type="button" class="btn btn-ghost btn-sm" id="backTo1">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
-              Edit my details
-            </button>
-            <span class="note">Already paid? Reopen the method you used and tap “I've completed the payment”.</span>
-          </div>
+          <div id="payPick"></div>
         </div>
 
         <!-- STEP 3 -->
@@ -898,9 +828,7 @@ function goStep(n, scroll = true) {
 }
 
 function paintStep2() {
-  $('#sumName').textContent = state.fullName;
-  $('#sumContact').textContent = `${state.email} · @${state.snap}`;
-  $('#dueLine').textContent = `${BHD()} (Benefit Pay) or ${USD()} (PayPal)`;
+  renderPick($('#payPick'));
 }
 
 /* ---------- proof of payment ---------- */
@@ -995,12 +923,12 @@ async function acceptProof(file) {
 
 /* ---------- modal plumbing ---------- */
 let lastFocus = null;
-function openModal(html) {
+function openModal(html, size = '') {
   closeModal();
   lastFocus = document.activeElement;
   const o = document.createElement('div');
   o.className = 'overlay'; o.id = 'overlay';
-  o.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+  o.innerHTML = `<div class="modal ${size}" role="dialog" aria-modal="true">${html}</div>`;
   document.body.appendChild(o);
   document.body.style.overflow = 'hidden';
   o.addEventListener('click', e => { if (e.target === o) closeModal(); });
@@ -1094,35 +1022,56 @@ function confirmView(method) {
   });
 }
 
-/* ---------- PayPal ---------- */
-function paypalModal() {
+/* ---------- choosing a method ---------- */
+const LOGO_PAYPAL  = '<svg viewBox="0 0 101 32" aria-label="PayPal" role="img"><path fill="#002991" d="M12.2 4.4H6.1c-.4 0-.8.3-.9.7L2.8 21.7c0 .3.2.6.5.6h2.9c.4 0 .8-.3.9-.7l.7-4.4c.1-.4.4-.7.9-.7h1.9c4 0 6.4-2 7-5.8.3-1.7 0-3-.7-3.9-.9-1-2.4-1.5-4.7-1.5zm.7 5.7c-.3 2.2-2 2.2-3.6 2.2h-.9l.6-4c0-.2.2-.4.5-.4h.4c1.1 0 2.1 0 2.6.6.3.4.4.9.4 1.6z"/><path fill="#002991" d="M30.3 10h-2.9c-.2 0-.5.2-.5.4l-.1.8-.2-.3c-.6-.9-2-1.2-3.4-1.2-3.2 0-5.9 2.4-6.4 5.8-.3 1.7.1 3.3 1.1 4.4.9 1 2.1 1.5 3.6 1.5 2.6 0 4-1.7 4-1.7l-.1.8c0 .3.2.6.5.6h2.6c.4 0 .8-.3.9-.7l1.6-9.8c0-.3-.2-.6-.5-.6zm-4.1 5.6c-.3 1.7-1.6 2.8-3.3 2.8-.8 0-1.5-.3-1.9-.8-.4-.5-.6-1.2-.4-2 .3-1.6 1.6-2.8 3.3-2.8.8 0 1.5.3 1.9.8.4.5.6 1.2.4 2z"/><path fill="#002991" d="M45.8 10h-2.9c-.3 0-.5.1-.7.4l-4 5.8-1.7-5.6c-.1-.4-.4-.6-.8-.6h-2.8c-.3 0-.6.3-.5.7l3.2 9.3-3 4.2c-.2.3 0 .8.4.8h2.9c.3 0 .5-.1.7-.4l9.6-13.8c.2-.3 0-.8-.4-.8z"/><path fill="#60CDFF" d="M55.6 4.4h-6.1c-.4 0-.8.3-.9.7l-2.4 16.6c0 .3.2.6.5.6h3.1c.3 0 .5-.2.6-.5l.7-4.6c.1-.4.4-.7.9-.7h1.9c4 0 6.4-2 7-5.8.3-1.7 0-3-.7-3.9-.9-1-2.4-1.4-4.6-1.4zm.7 5.7c-.3 2.2-2 2.2-3.6 2.2h-.9l.6-4c0-.2.2-.4.5-.4h.4c1.1 0 2.1 0 2.6.6.3.4.4.9.4 1.6z"/><path fill="#60CDFF" d="M73.7 10h-2.9c-.2 0-.5.2-.5.4l-.1.8-.2-.3c-.6-.9-2-1.2-3.4-1.2-3.2 0-5.9 2.4-6.4 5.8-.3 1.7.1 3.3 1.1 4.4.9 1 2.1 1.5 3.6 1.5 2.6 0 4-1.7 4-1.7l-.1.8c0 .3.2.6.5.6h2.6c.4 0 .8-.3.9-.7l1.6-9.8c0-.3-.2-.6-.5-.6zm-4.1 5.6c-.3 1.7-1.6 2.8-3.3 2.8-.8 0-1.5-.3-1.9-.8-.4-.5-.6-1.2-.4-2 .3-1.6 1.6-2.8 3.3-2.8.8 0 1.5.3 1.9.8.4.5.6 1.2.4 2z"/><path fill="#60CDFF" d="M77.1 4.9 74.7 21.7c0 .3.2.6.5.6h2.5c.4 0 .8-.3.9-.7l2.4-16.6c0-.3-.2-.6-.5-.6h-2.8c-.3 0-.5.2-.6.5z"/></svg>';
+const LOGO_BENEFIT = '<span class="wm-benefit">Benefit <span>Pay</span></span>';
+
+/* Both methods side by side: logo, price, one line. */
+function renderPick(box) {
+  box.innerHTML = `
+    <div class="paypick">
+      <button type="button" class="pp-tile" data-pay="paypal">
+        <span class="pp-logo">${LOGO_PAYPAL}</span>
+        <span class="pp-price">${USD()}</span>
+        <span class="pp-sub">Card or PayPal balance</span>
+      </button>
+      <button type="button" class="pp-tile" data-pay="benefit">
+        <span class="pp-logo">${LOGO_BENEFIT}</span>
+        <span class="pp-price">${BHD()}</span>
+        <span class="pp-sub">Scan with the BenefitPay app</span>
+      </button>
+    </div>
+    <p class="pp-hint">After paying, come back here and tap <b>I've paid</b>.</p>`;
+  $$('[data-pay]', box).forEach(b => b.addEventListener('click', () =>
+    b.dataset.pay === 'paypal' ? paypalModal() : benefitModal()));
+}
+
+/* Opens as soon as the details are saved. */
+function pickModal() {
   openModal(`
-    <div class="modal-top">
-      <div>
-        <h3>Pay with PayPal</h3>
-        <p>A secure PayPal window opens on top of this page — you stay right here.</p>
-      </div>
+    <div class="pay-head">
+      <h3 style="font-size:20px">Choose how to pay</h3>
       <button class="modal-x" data-close aria-label="Close">×</button>
     </div>
-    <div class="modal-body">
-      <div class="rowline"><span class="k">Course</span><span class="v">${CONFIG.course}</span></div>
-      <div class="rowline"><span class="k">Amount</span><span class="v">${USD()}</span></div>
-      <ol class="steps-ol">
-        <li>Tap the gold button below. PayPal opens in a secure window.</li>
-        <li>Pay <b>${USD()}</b> with your card or PayPal balance.</li>
-        <li>Come back here and tap <b>“I've completed the payment”</b>. Your invoice appears straight away.</li>
-      </ol>
-      <div class="modal-foot">
-        <button class="btn btn-gold btn-block" id="ppGo">
-          Open secure PayPal window
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>
-        </button>
-        <button class="btn btn-purple btn-block" id="ppDone">I've completed the payment</button>
-      </div>
-      <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
-        Window didn't open? <a href="${CONFIG.paypal.link}" target="_blank" rel="noopener">Open PayPal in a new tab</a>.
-      </p>
-    </div>`);
+    <div class="pay-body" id="pickSlot"></div>`, 'modal-sm');
+  renderPick($('#pickSlot'));
+}
+
+/* ---------- PayPal ---------- */
+let paypalWatch = 0;
+function paypalModal() {
+  openModal(`
+    <div class="pay-head">
+      <span class="pp-logo">${LOGO_PAYPAL}</span>
+      <button class="modal-x" data-close aria-label="Close">×</button>
+    </div>
+    <div class="pay-sum"><div class="pp-price">${USD()}</div></div>
+    <div class="pay-body">
+      <p class="line">Pay in the PayPal window, then come back and tap <b>I've paid</b>.</p>
+      <button class="btn btn-gold btn-block" id="ppGo">Pay with PayPal</button>
+      <button class="btn btn-ghost btn-block" id="ppDone">I've paid</button>
+      <p class="tiny">Nothing opened? <a href="${CONFIG.paypal.link}" target="_blank" rel="noopener">Open PayPal in a new tab</a></p>
+    </div>`, 'modal-sm');
 
   $('#ppGo').addEventListener('click', e => {
     const release = busy(e.currentTarget, 'Opening PayPal…');
@@ -1132,8 +1081,18 @@ function paypalModal() {
     // note: 'noopener' must NOT go in the feature string — it forces a null return
     const win = window.open(CONFIG.paypal.link, 'lionessPaypal',
       `width=${w},height=${h},left=${x},top=${y},resizable,scrollbars`);
-    if (win) { try { win.opener = null; } catch (e) {} }
-    if (!win) toast('Allow pop-ups, or use the link at the bottom of this box.');
+    if (win) {
+      try { win.opener = null; } catch (e) {}
+      // When the PayPal window closes, the buyer is back here: take them
+      // straight to the last step instead of leaving them to find it.
+      clearInterval(paypalWatch);
+      paypalWatch = setInterval(() => {
+        if (!win.closed) return;
+        clearInterval(paypalWatch);
+        if (state.step === 2) confirmView('PayPal');
+      }, 700);
+    }
+    if (!win) toast('Allow pop-ups, or use the link below the buttons.');
   });
   $('#ppDone').addEventListener('click', () => confirmView('PayPal'));
   saveSignup('PayPal');
@@ -1149,33 +1108,20 @@ function benefitModal() {
   ].join('');
 
   openModal(`
-    <div class="modal-top">
-      <div>
-        <h3>Pay with Benefit Pay</h3>
-        <p>Scan this code with the BenefitPay app on your phone.</p>
-      </div>
+    <div class="pay-head">
+      <span class="pp-logo">${LOGO_BENEFIT}</span>
       <button class="modal-x" data-close aria-label="Close">×</button>
     </div>
-    <div class="modal-body">
-      <div class="qr-frame"><div class="skeleton" id="qrSlot">
+    <div class="pay-sum"><div class="pp-price">${BHD()}</div></div>
+    <div class="pay-body">
+      <div class="qr-frame" style="margin:0 auto 6px"><div class="skeleton" id="qrSlot">
         <span class="spin" aria-hidden="true"></span>
         Loading the QR code…
       </div></div>
-      <div class="rowline"><span class="k">Amount</span><span class="v">${BHD()}</span></div>
       ${manual}
-      <ol class="steps-ol">
-        <li>Open the <b>BenefitPay</b> app and choose <b>Scan</b>.</li>
-        <li>Scan the code above and check the amount — <b>${BHD()}</b>.</li>
-        <li>Confirm the payment and take a <b>screenshot</b> of the confirmation.</li>
-        <li>Come back here, tap <b>“I've completed the payment”</b> and attach the screenshot.</li>
-      </ol>
-      <div class="modal-foot">
-        <button class="btn btn-gold btn-block" id="bpDone">I've completed the payment</button>
-      </div>
-      <p style="font-size:12.4px;color:var(--muted);margin:14px 0 0;text-align:center">
-        On your phone already? Take a screenshot of the code and scan it from your gallery in the app.
-      </p>
-    </div>`);
+      <p class="line">Scan with the BenefitPay app, pay, and screenshot the confirmation. Then tap <b>I've paid</b>.</p>
+      <button class="btn btn-gold btn-block" id="bpDone">I've paid</button>
+    </div>`, 'modal-sm');
 
   $('#bpDone').addEventListener('click', () => confirmView('Benefit Pay'));
   mountQR();
@@ -1475,8 +1421,6 @@ function paintStatic() {
   $('#priceAlt').textContent     = BHD();
   $('#accessLabel').textContent  = CONFIG.accessLabel;
   $('#cardNote').textContent     = CONFIG.courseNote;
-  $('#ppCurLabel').textContent   = CONFIG.paypal.currency;
-  $('#bpCurLabel').textContent   = CONFIG.benefit.currency;
   $('#yr').textContent           = new Date().getFullYear();
   $$('.brand b, footer .brand b').forEach(el => el.textContent = CONFIG.brand);
   document.title = `${CONFIG.brand} Course — Enrollment`;
@@ -1499,7 +1443,7 @@ function wire() {
         toast("We couldn't save your details. Check your connection and tap Continue again.");
         return;
       }
-      paintStep2(); goStep(2);
+      paintStep2(); goStep(2); pickModal();
     });
   });
 
@@ -1507,8 +1451,6 @@ function wire() {
     i.addEventListener('input', () => i.closest('.field')?.classList.remove('bad')));
 
   $('#backTo1').addEventListener('click', () => goStep(1));
-  $('#openPaypal').addEventListener('click', paypalModal);
-  $('#openBenefit').addEventListener('click', benefitModal);
 
   $('#resendEmail').addEventListener('click', () => sendInvoiceEmail(true));
   $('#viewInvoice').addEventListener('click', viewInvoice);
