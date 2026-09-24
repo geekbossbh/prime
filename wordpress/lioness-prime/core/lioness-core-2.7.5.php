@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.7.4.
+ * Lioness Prime — core, version 2.7.5.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.7.4' );
+define( 'LIONESS_VERSION', '2.7.5' );
 
 /**
  * The plugin's own directory and URL.
@@ -399,6 +399,24 @@ function lioness_apply_settings_to_page( $html, $base ) {
 
 	return $html;
 }
+
+/*
+ * The first request after a new version is installed clears the page cache, so
+ * no visitor keeps getting a copy of the old course page. The version that did
+ * the updating cannot do it itself: its own code is the old code.
+ */
+add_action( 'init', function () {
+	if ( get_option( 'lioness_page_version' ) === LIONESS_VERSION ) {
+		return;
+	}
+	update_option( 'lioness_page_version', LIONESS_VERSION, true );
+	if ( function_exists( 'wp_cache_clear_cache' ) ) {
+		wp_cache_clear_cache();       // WP Super Cache
+	}
+	if ( function_exists( 'wp_cache_flush' ) ) {
+		wp_cache_flush();             // the object cache (Docket Cache)
+	}
+}, 1 );
 
 /* -------------------------------------------------------------------------
  * Enrollment record
@@ -1019,8 +1037,15 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 			'posts_per_page' => 2,
 			'no_found_rows'  => true,
 		) );
+		// Only when it is plainly the same person: the first name they gave the
+		// page matches the one PayPal reports. Otherwise the payment is recorded
+		// on its own rather than risk marking someone else paid.
 		if ( 1 === count( $recent ) ) {
-			$post_id = (int) $recent[0];
+			$given = strtolower( strtok( trim( (string) get_post_meta( $recent[0], 'lp_name', true ) ), ' ' ) );
+			$paid  = strtolower( trim( $get( 'first_name' ) ) );
+			if ( '' !== $given && $given === $paid ) {
+				$post_id = (int) $recent[0];
+			}
 		}
 	}
 
@@ -1185,7 +1210,25 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 	);
 	// The same reference is the same enrollment: a buyer who confirms twice, or
 	// whose page resends an unfinished confirmation, updates their one record.
-	$pending = lioness_enrollment_by( 'lp_reference', $ref );
+	// Only for the same buyer: a reference that turns up with a different email
+	// never rewrites someone else's enrollment; it gets a record of its own.
+	$pending = 0;
+	foreach ( get_posts( array(
+		'post_type'      => 'lp_enrollment',
+		'post_status'    => array( 'pending', 'publish' ),
+		'meta_key'       => 'lp_reference',
+		'meta_value'     => $ref,
+		'fields'         => 'ids',
+		'posts_per_page' => 20,
+		'orderby'        => 'date',
+		'order'          => 'ASC',
+		'no_found_rows'  => true,
+	) ) as $candidate ) {
+		if ( strtolower( (string) get_post_meta( $candidate, 'lp_email', true ) ) === strtolower( $email ) ) {
+			$pending = (int) $candidate;
+			break;
+		}
+	}
 	if ( $pending ) {
 		$record['ID'] = $pending;
 		$post_id      = wp_update_post( $record, true );
@@ -1675,6 +1718,45 @@ function lioness_pay_status( $post_id ) {
 	return 'paid' === get_post_meta( $post_id, 'lp_status', true ) ? 'paid' : 'claimed';
 }
 
+/** What Mark as paid asks first: whether it will also email the invoice. */
+function lioness_mark_paid_question( $post_id ) {
+	if ( get_post_meta( $post_id, 'lp_invoiced', true ) ) {
+		return 'Mark this enrollment as paid? The invoice has already been sent, so no email goes out.';
+	}
+	if ( ! is_email( (string) get_post_meta( $post_id, 'lp_email', true ) ) ) {
+		return 'Mark this enrollment as paid? There is no email on it, so no invoice can be sent yet.';
+	}
+	return 'Mark this enrollment as paid and email the invoice to ' . get_post_meta( $post_id, 'lp_email', true ) . '?';
+}
+
+/*
+ * Mark as paid / unpaid ask first, then say "Working…" and ignore further
+ * clicks, so a slow page load cannot send the same action — or the invoice —
+ * twice.
+ */
+add_action( 'admin_footer-edit.php', function () {
+	$screen = get_current_screen();
+	if ( ! $screen || 'lp_enrollment' !== $screen->post_type ) {
+		return;
+	}
+	?>
+	<script>
+	document.addEventListener('click', function (e) {
+		var a = e.target.closest && e.target.closest('a.lp-act');
+		if (!a) return;
+		if (a.getAttribute('aria-disabled') === 'true') { e.preventDefault(); return; }
+		if (a.dataset.confirm && !window.confirm(a.dataset.confirm)) { e.preventDefault(); return; }
+		document.querySelectorAll('a.lp-act').forEach(function (b) {
+			b.setAttribute('aria-disabled', 'true');
+			b.style.pointerEvents = 'none';
+			b.style.opacity = b === a ? '1' : '.45';
+		});
+		a.textContent = 'Working…';
+	});
+	</script>
+	<?php
+} );
+
 function lioness_mark_unpaid_url( $post_id ) {
 	return wp_nonce_url(
 		admin_url( 'admin-post.php?action=lioness_mark_unpaid&post=' . (int) $post_id ),
@@ -1717,12 +1799,12 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 		echo $badge( 'Unpaid', '#fff', '#B03A4E' );
 	}
 	if ( 'paid' !== $status && current_user_can( 'edit_post', $post_id ) ) {
-		echo '<br><a class="button button-small" style="margin-top:6px" href="' . esc_url( lioness_mark_paid_url( $post_id ) ) . '"'
-			. ' onclick="return confirm(\'Mark this enrollment as paid' . ( get_post_meta( $post_id, 'lp_invoiced', true ) ? '' : ' and email the invoice' ) . '?\')">Mark as paid</a>';
+		echo '<br><a class="button button-small lp-act" style="margin-top:6px" href="' . esc_url( lioness_mark_paid_url( $post_id ) ) . '"'
+			. ' data-confirm="' . esc_attr( lioness_mark_paid_question( $post_id ) ) . '">Mark as paid</a>';
 	}
 	if ( 'unpaid' !== $status && current_user_can( 'edit_post', $post_id ) ) {
-		echo '<br><a class="button button-small" style="margin-top:6px" href="' . esc_url( lioness_mark_unpaid_url( $post_id ) ) . '"'
-			. ' onclick="return confirm(\'Mark this enrollment as unpaid? No email is sent.\')">Mark as unpaid</a>';
+		echo '<br><a class="button button-small lp-act" style="margin-top:6px" href="' . esc_url( lioness_mark_unpaid_url( $post_id ) ) . '"'
+			. ' data-confirm="Mark this enrollment as unpaid? No email is sent.">Mark as unpaid</a>';
 	}
 
 	$err = (string) get_post_meta( $post_id, 'lp_mail_error', true );
@@ -1739,10 +1821,10 @@ add_action( 'manage_lp_enrollment_posts_custom_column', function ( $col, $post_i
 
 add_filter( 'post_row_actions', function ( $actions, $post ) {
 	if ( 'lp_enrollment' === $post->post_type && 'paid' !== lioness_pay_status( $post->ID ) && current_user_can( 'edit_post', $post->ID ) ) {
-		$actions['lp_mark_paid'] = '<a href="' . esc_url( lioness_mark_paid_url( $post->ID ) ) . '">Mark as paid</a>';
+		$actions['lp_mark_paid'] = '<a class="lp-act" href="' . esc_url( lioness_mark_paid_url( $post->ID ) ) . '" data-confirm="' . esc_attr( lioness_mark_paid_question( $post->ID ) ) . '">Mark as paid</a>';
 	}
 	if ( 'lp_enrollment' === $post->post_type && 'unpaid' !== lioness_pay_status( $post->ID ) && current_user_can( 'edit_post', $post->ID ) ) {
-		$actions['lp_mark_unpaid'] = '<a href="' . esc_url( lioness_mark_unpaid_url( $post->ID ) ) . '">Mark as unpaid</a>';
+		$actions['lp_mark_unpaid'] = '<a class="lp-act" href="' . esc_url( lioness_mark_unpaid_url( $post->ID ) ) . '" data-confirm="Mark this enrollment as unpaid? No email is sent.">Mark as unpaid</a>';
 	}
 	return $actions;
 }, 10, 2 );
