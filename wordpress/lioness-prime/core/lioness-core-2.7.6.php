@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.7.5.
+ * Lioness Prime — core, version 2.7.6.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.7.5' );
+define( 'LIONESS_VERSION', '2.7.6' );
 
 /**
  * The plugin's own directory and URL.
@@ -502,16 +502,31 @@ add_action( 'init', function () {
 	}
 } );
 
-/** Enrollment records are never served to a caller who is not signed in. */
+/**
+ * Enrollment records are served only to Lioness Prime's own staff: someone
+ * signed in who can edit other people's posts (editors and administrators).
+ *
+ * WordPress matches REST routes without regard to case, so the check is made
+ * on the lower-cased route: /wp/v2/LP_ENROLLMENT reaches the same records and
+ * must meet the same refusal.
+ */
 add_filter( 'rest_pre_dispatch', function ( $result, $server, $request ) {
-	if ( 0 !== strpos( $request->get_route(), '/wp/v2/lp_enrollment' ) ) {
+	if ( false === strpos( strtolower( (string) $request->get_route() ), '/wp/v2/lp_enrollment' ) ) {
 		return $result;
 	}
-	if ( ! is_user_logged_in() || ! current_user_can( 'edit_posts' ) ) {
+	if ( ! is_user_logged_in() || ! current_user_can( 'edit_others_posts' ) ) {
 		return new WP_Error( 'lioness_forbidden', 'Enrollments are not public.', array( 'status' => 401 ) );
 	}
 	return $result;
 }, 10, 3 );
+
+/** And should a record ever be reached another way, it carries nothing about the buyer. */
+add_filter( 'rest_prepare_lp_enrollment', function ( $response, $post ) {
+	if ( current_user_can( 'edit_others_posts' ) ) {
+		return $response;
+	}
+	return new WP_REST_Response( array( 'id' => (int) $post->ID ), 200 );
+}, 10, 2 );
 
 /* -------------------------------------------------------------------------
  * Payment screenshots
