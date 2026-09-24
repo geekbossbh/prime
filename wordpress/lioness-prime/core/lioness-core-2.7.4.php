@@ -1,6 +1,6 @@
 <?php
 /**
- * Lioness Prime — core, version 2.7.3.
+ * Lioness Prime — core, version 2.7.4.
  *
  * The version lives in this FILENAME on purpose. A server with OPcache set to
  * skip timestamp checks will keep running the bytecode it compiled for a given
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.7.3' );
+define( 'LIONESS_VERSION', '2.7.4' );
 
 /**
  * The plugin's own directory and URL.
@@ -1183,7 +1183,9 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'post_status' => 'publish',
 		'post_title'  => $data['reference'] . ' — ' . $data['name'],
 	);
-	$pending = lioness_pending_enrollment( $ref );
+	// The same reference is the same enrollment: a buyer who confirms twice, or
+	// whose page resends an unfinished confirmation, updates their one record.
+	$pending = lioness_enrollment_by( 'lp_reference', $ref );
 	if ( $pending ) {
 		$record['ID'] = $pending;
 		$post_id      = wp_update_post( $record, true );
