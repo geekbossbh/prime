@@ -885,6 +885,8 @@ function renderProof() {
   });
 }
 
+let proofWorking = false;   // a screenshot is still being read and scaled down
+
 async function acceptProof(file) {
   const field = $('#proofField'), err = $('#proofErr');
   const fail = msg => {
@@ -909,7 +911,9 @@ async function acceptProof(file) {
   }
   if (drop) drop.hidden = true;
 
+  proofWorking = true;
   const shrunk = await shrinkImage(file, CONFIG.proof.maxDimension, 0.82);
+  proofWorking = false;
   if (box) box.classList.remove('working');
   if (!shrunk) return fail("That image couldn't be read. Try a different screenshot.");
   proof = {
@@ -1002,7 +1006,17 @@ function confirmView(method) {
   }));
 
   $('#confirmPaid').addEventListener('click', e => {
-    if (e.currentTarget.dataset.busy === '1') return;
+    const btn = e.currentTarget;
+    if (btn.dataset.busy === '1') return;
+    if (proofWorking) {
+      // Tapped while the screenshot is still being prepared: say so, then carry on.
+      const release = busy(btn, 'Preparing your screenshot…');
+      const wait = setInterval(() => {
+        if (proofWorking) return;
+        clearInterval(wait); release(); btn.click();
+      }, 200);
+      return;
+    }
     if (proofNeeded(method) && !proof) {
       $('#proofErr').textContent = 'Please attach a screenshot of your payment.';
       $('#proofField').classList.add('bad');
@@ -1330,6 +1344,7 @@ async function sendInvoiceEmail(manual) {
     return;
   }
   sending = true; lastSend = Date.now();
+  let sent = false;
   const done = busy($('#resendEmail'), 'Sending…');
   mailStatus('sending', 'Emailing your invoice…');
   try {
@@ -1364,7 +1379,7 @@ async function sendInvoiceEmail(manual) {
       const ejs = await loadEmailJS();
       await ejs.send(CONFIG.email.serviceId, CONFIG.email.templateId, emailParams());
     }
-    state.emailed = true; save();
+    state.emailed = true; save(); sent = true;
     mailStatus('sent', `Invoice emailed to ${state.email} — a copy went to ${CONFIG.brand}.`);
     if (manual) toast('Invoice sent');
   } catch (err) {
@@ -1375,8 +1390,25 @@ async function sendInvoiceEmail(manual) {
   } finally {
     sending = false;
     done();
+    if (sent) lockResend();
   }
 }
+
+/* Once the invoice has gone, the button says so and stays locked for a minute,
+   so a second tap cannot send the same confirmation again. After that it
+   offers to send another copy. */
+function lockResend() {
+  const b = $('#resendEmail');
+  if (!b) return;
+  clearTimeout(lockResend.t);
+  b.disabled = true;
+  b.innerHTML = '✓ Invoice sent';
+  lockResend.t = setTimeout(() => {
+    b.disabled = false;
+    b.innerHTML = RESEND_ICON + 'Send again';
+  }, 60000);
+}
+const RESEND_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>';
 
 /* Opens the invoice on its own, carrying the page's styles across so it looks
    exactly as it does here — ready to save or print. Built with DOM calls rather
@@ -1479,7 +1511,10 @@ function restore() {
   paintStep2();
   if (state.step === 3 && state.method) {
     buildInvoice(); goStep(3, false);
-    if (state.emailed) mailStatus('sent', `Invoice emailed to ${state.email}.`);
+    if (state.emailed) {
+      mailStatus('sent', `Invoice emailed to ${state.email}.`);
+      $('#resendEmail').innerHTML = RESEND_ICON + 'Send again';
+    }
     // Confirmed, but the send never finished — the page was closed or the
     // connection dropped. Try again now rather than wait for a tap.
     else sendInvoiceEmail(false);
