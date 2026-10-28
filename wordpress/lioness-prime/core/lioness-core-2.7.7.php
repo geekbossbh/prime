@@ -1087,9 +1087,25 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 
 	$amount = ( 'USD' === $get( 'mc_currency' ) ? '$' . $get( 'mc_gross' ) : trim( $get( 'mc_gross' ) . ' ' . $get( 'mc_currency' ) ) );
 
+	// PayPal verifies that a payment happened, not that it was for this course:
+	// anyone can pay a cent with a reference in the note. Only the full price
+	// in dollars counts as paid; anything else is recorded for checking by hand.
+	$full = 'USD' === $get( 'mc_currency' ) && is_numeric( $get( 'mc_gross' ) )
+		&& (float) $get( 'mc_gross' ) + 0.001 >= (float) lioness_price_usd();
+	if ( ! $full ) {
+		lioness_paypal_log( 'payment of ' . $amount . ' is not the course price — recorded as needing checking', $ipn );
+	}
+
 	// Already confirmed on the page and already invoiced: note the payment, send nothing twice.
 	if ( $post_id && 'publish' === get_post_status( $post_id ) ) {
 		update_post_meta( $post_id, 'lp_paypal_txn', $txn );
+		if ( ! $full ) {
+			update_post_meta( $post_id, 'lp_paid', $amount . ' — reported by PayPal, not the course price: check it' );
+			if ( '' === (string) get_post_meta( $post_id, 'lp_transaction', true ) ) {
+				update_post_meta( $post_id, 'lp_transaction', $txn );
+			}
+			return new WP_REST_Response( null, 200 );
+		}
 		update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
 		update_post_meta( $post_id, 'lp_status', 'paid' );
 		if ( '' === (string) get_post_meta( $post_id, 'lp_transaction', true ) ) {
@@ -1129,6 +1145,10 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 		'verified'    => true,
 		'status_line' => 'Status: paid. PayPal has confirmed this payment.',
 	);
+	if ( ! $full ) {
+		$data['status_line']   = 'Status: payment received, pending confirmation.';
+		$data['merchant_line'] = 'PayPal reported a payment of ' . $amount . ', which is not the course price of $' . lioness_price_usd() . '. Check it before giving access.';
+	}
 	if ( ! is_email( $data['email'] ) ) {
 		lioness_paypal_log( 'recorded nothing — PayPal gave no email for the payer', $ipn );
 		return new WP_REST_Response( null, 200 );
@@ -1153,8 +1173,8 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 		update_post_meta( $post_id, 'lp_' . $k, $data[ $k ] );
 	}
 	update_post_meta( $post_id, 'lp_paypal_txn', $txn );
-	update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
-	update_post_meta( $post_id, 'lp_status', 'paid' );
+	update_post_meta( $post_id, 'lp_paid', $amount . ( $full ? ' — confirmed by PayPal' : ' — reported by PayPal, not the course price: check it' ) );
+	update_post_meta( $post_id, 'lp_status', $full ? 'paid' : 'claimed' );
 	if ( $payer && $payer !== $data['email'] ) {
 		update_post_meta( $post_id, 'lp_paypal_payer', $payer );
 	}
