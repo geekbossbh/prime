@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.7.6' );
+define( 'LIONESS_VERSION', '2.7.7' );
 
 /**
  * The plugin's own directory and URL.
@@ -154,6 +154,24 @@ function lioness_qr_url()         { return (string) lioness_opt( 'qr_url', '' );
 function lioness_proof_required() { return '0' !== (string) lioness_opt( 'proof_required', '1' ); }
 function lioness_auto_update()    { return '0' !== (string) lioness_opt( 'auto_update', '1' ); }
 
+/**
+ * The note the course page shows under the course name: the saved setting, or
+ * the page's own built-in note when none is saved. The invoice uses this rather
+ * than anything the browser sends, so an invoice email can only ever carry the
+ * page's own words.
+ */
+function lioness_page_course_note() {
+	$note = lioness_course_note();
+	if ( '' !== $note ) {
+		return $note;
+	}
+	$html = @file_get_contents( LIONESS_DIR . 'page/index.html' );
+	if ( false !== $html && preg_match( '/\bcourseNote:\s*\x27((?:[^\x27\\\\]|\\\\.)*)\x27/', $html, $m ) ) {
+		return stripslashes( $m[1] );
+	}
+	return '';
+}
+
 /* -------------------------------------------------------------------------
  * Site hardening
  * ---------------------------------------------------------------------- */
@@ -194,6 +212,9 @@ function lioness_login_key() {
 	return 'lioness_login_' . md5( $ip );
 }
 
+// Runs last (priority 100): WordPress's own password check at priority 20
+// re-authenticates whatever an earlier filter returned, so a lockout at a lower
+// priority was overridden and a locked-out address could keep guessing.
 add_filter( 'authenticate', function ( $user, $username ) {
 	if ( empty( $username ) ) {
 		return $user;   // an empty form, not an attempt
@@ -205,7 +226,7 @@ add_filter( 'authenticate', function ( $user, $username ) {
 		);
 	}
 	return $user;
-}, 1, 2 );
+}, 100, 2 );
 
 add_action( 'wp_login_failed', function () {
 	$key = lioness_login_key();
@@ -1208,7 +1229,7 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'reference'   => $ref,
 		'invoice_no'  => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
 		'course'      => lioness_course_name(),
-		'course_note' => $clean( 'course_note', 300 ),
+		'course_note' => lioness_page_course_note(),
 		'amount'      => $amount,
 		'method'      => $method,
 		'transaction' => $clean( 'transaction', 80 ),
