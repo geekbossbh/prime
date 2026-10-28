@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LIONESS_VERSION', '2.7.6' );
+define( 'LIONESS_VERSION', '2.7.7' );
 
 /**
  * The plugin's own directory and URL.
@@ -154,6 +154,24 @@ function lioness_qr_url()         { return (string) lioness_opt( 'qr_url', '' );
 function lioness_proof_required() { return '0' !== (string) lioness_opt( 'proof_required', '1' ); }
 function lioness_auto_update()    { return '0' !== (string) lioness_opt( 'auto_update', '1' ); }
 
+/**
+ * The note the course page shows under the course name: the saved setting, or
+ * the page's own built-in note when none is saved. The invoice uses this rather
+ * than anything the browser sends, so an invoice email can only ever carry the
+ * page's own words.
+ */
+function lioness_page_course_note() {
+	$note = lioness_course_note();
+	if ( '' !== $note ) {
+		return $note;
+	}
+	$html = @file_get_contents( LIONESS_DIR . 'page/index.html' );
+	if ( false !== $html && preg_match( '/\bcourseNote:\s*\x27((?:[^\x27\\\\]|\\\\.)*)\x27/', $html, $m ) ) {
+		return stripslashes( $m[1] );
+	}
+	return '';
+}
+
 /* -------------------------------------------------------------------------
  * Site hardening
  * ---------------------------------------------------------------------- */
@@ -194,6 +212,9 @@ function lioness_login_key() {
 	return 'lioness_login_' . md5( $ip );
 }
 
+// Runs last (priority 100): WordPress's own password check at priority 20
+// re-authenticates whatever an earlier filter returned, so a lockout at a lower
+// priority was overridden and a locked-out address could keep guessing.
 add_filter( 'authenticate', function ( $user, $username ) {
 	if ( empty( $username ) ) {
 		return $user;   // an empty form, not an attempt
@@ -205,7 +226,7 @@ add_filter( 'authenticate', function ( $user, $username ) {
 		);
 	}
 	return $user;
-}, 1, 2 );
+}, 100, 2 );
 
 add_action( 'wp_login_failed', function () {
 	$key = lioness_login_key();
@@ -1066,9 +1087,25 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 
 	$amount = ( 'USD' === $get( 'mc_currency' ) ? '$' . $get( 'mc_gross' ) : trim( $get( 'mc_gross' ) . ' ' . $get( 'mc_currency' ) ) );
 
+	// PayPal verifies that a payment happened, not that it was for this course:
+	// anyone can pay a cent with a reference in the note. Only the full price
+	// in dollars counts as paid; anything else is recorded for checking by hand.
+	$full = 'USD' === $get( 'mc_currency' ) && is_numeric( $get( 'mc_gross' ) )
+		&& (float) $get( 'mc_gross' ) + 0.001 >= (float) lioness_price_usd();
+	if ( ! $full ) {
+		lioness_paypal_log( 'payment of ' . $amount . ' is not the course price — recorded as needing checking', $ipn );
+	}
+
 	// Already confirmed on the page and already invoiced: note the payment, send nothing twice.
 	if ( $post_id && 'publish' === get_post_status( $post_id ) ) {
 		update_post_meta( $post_id, 'lp_paypal_txn', $txn );
+		if ( ! $full ) {
+			update_post_meta( $post_id, 'lp_paid', $amount . ' — reported by PayPal, not the course price: check it' );
+			if ( '' === (string) get_post_meta( $post_id, 'lp_transaction', true ) ) {
+				update_post_meta( $post_id, 'lp_transaction', $txn );
+			}
+			return new WP_REST_Response( null, 200 );
+		}
 		update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
 		update_post_meta( $post_id, 'lp_status', 'paid' );
 		if ( '' === (string) get_post_meta( $post_id, 'lp_transaction', true ) ) {
@@ -1108,6 +1145,10 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 		'verified'    => true,
 		'status_line' => 'Status: paid. PayPal has confirmed this payment.',
 	);
+	if ( ! $full ) {
+		$data['status_line']   = 'Status: payment received, pending confirmation.';
+		$data['merchant_line'] = 'PayPal reported a payment of ' . $amount . ', which is not the course price of $' . lioness_price_usd() . '. Check it before giving access.';
+	}
 	if ( ! is_email( $data['email'] ) ) {
 		lioness_paypal_log( 'recorded nothing — PayPal gave no email for the payer', $ipn );
 		return new WP_REST_Response( null, 200 );
@@ -1132,8 +1173,8 @@ function lioness_handle_paypal( WP_REST_Request $request ) {
 		update_post_meta( $post_id, 'lp_' . $k, $data[ $k ] );
 	}
 	update_post_meta( $post_id, 'lp_paypal_txn', $txn );
-	update_post_meta( $post_id, 'lp_paid', $amount . ' — confirmed by PayPal' );
-	update_post_meta( $post_id, 'lp_status', 'paid' );
+	update_post_meta( $post_id, 'lp_paid', $amount . ( $full ? ' — confirmed by PayPal' : ' — reported by PayPal, not the course price: check it' ) );
+	update_post_meta( $post_id, 'lp_status', $full ? 'paid' : 'claimed' );
 	if ( $payer && $payer !== $data['email'] ) {
 		update_post_meta( $post_id, 'lp_paypal_payer', $payer );
 	}
@@ -1208,7 +1249,7 @@ function lioness_handle_invoice( WP_REST_Request $request ) {
 		'reference'   => $ref,
 		'invoice_no'  => 'INV-' . preg_replace( '/^LP-/', '', $ref ),
 		'course'      => lioness_course_name(),
-		'course_note' => $clean( 'course_note', 300 ),
+		'course_note' => lioness_page_course_note(),
 		'amount'      => $amount,
 		'method'      => $method,
 		'transaction' => $clean( 'transaction', 80 ),
